@@ -19,17 +19,44 @@ export default function Layer6() {
           layerId={L}
           index={0}
           title="Object model and branching"
-          description="Git is a content-addressed key-value store. Once you grok blob/tree/commit/tag, every command makes sense."
+          description="Git is a content-addressed key-value store. Once you grok blob/tree/commit/tag, every command makes sense — and every 'lost work' panic stops being scary."
         >
           <Bullets
             items={[
-              <>Object model: blob (file), tree (directory), commit (snapshot + parent), tag — all addressed by SHA-1.</>,
-              <>Branching: GitHub Flow (short-lived PRs) for most teams; Trunk-Based Dev for high-velocity teams with feature flags.</>,
-              <>Merge preserves history; rebase rewrites it — never rebase shared/public branches.</>,
-              <><InlineCode>git bisect</InlineCode> binary-searches commits to find which one broke the build.</>,
+              <>Object model: blob (file content), tree (directory listing), commit (one tree + parent(s) + author/message), tag (named pointer). All keyed by the SHA-1 of their content — identical content stores once. A branch is not an object: it's a 41-byte file in <InlineCode>.git/refs</InlineCode> holding a commit hash. "Moving a branch" just rewrites that file.</>,
+              <>A commit's hash covers its tree <em>and</em> its parent hash. Change anything in history and every descendant hash changes — that's why rebase produces new commits, not edited ones, and why a shared rebase forces everyone else to re-clone.</>,
+              <>Merge vs rebase: merge keeps the real topology (a merge commit with two parents) — honest but noisy. Rebase replays your commits onto a new base for linear history — readable but rewrites hashes. Rule: rebase your <em>own</em> unpushed branch to clean it up; never rebase anything others have pulled.</>,
+              <>GitHub Flow (short-lived branch → PR → merge → delete) for most teams; trunk-based (commit to main behind feature flags) for high-velocity teams. Both exist to keep branches short — a week-old branch diverges far enough that the merge is a second feature's worth of risk.</>,
+              <>Recovery: <InlineCode>git reflog</InlineCode> logs every HEAD move for ~90 days, so a "lost" commit after a bad reset is still reachable by hash. <InlineCode>git bisect</InlineCode> binary-searches commits to pin the one that broke a test — O(log n) instead of reading every diff.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">Git failure modes worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Force-push to a shared branch</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                You rebase <InlineCode>main</InlineCode> and <InlineCode>push --force</InlineCode>. Everyone else's local <InlineCode>main</InlineCode> now points at commits that no longer exist upstream. Their next pull either conflicts on every file or — worse — they "fix" it by pushing the old history back and silently revert your work.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: never rewrite published history. If you must, use <InlineCode>--force-with-lease</InlineCode> (fails if someone else pushed) and tell the team. Protect <InlineCode>main</InlineCode> server-side so force-push is simply rejected.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Committed a secret</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                An API key lands in a commit. Deleting it in a later commit does nothing — it's still in history, still in every clone, still indexed by GitHub's secret scanners within seconds.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: treat the key as compromised and <strong>rotate it</strong> — scrubbing history (<InlineCode>git filter-repo</InlineCode>) is cleanup, not remediation. Prevent with a <InlineCode>.gitignore</InlineCode> for env files plus a pre-commit secret scanner (gitleaks).
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            Conventional Commits (<InlineCode>feat:</InlineCode>, <InlineCode>fix:</InlineCode>, <InlineCode>chore:</InlineCode>) aren't bureaucracy — they let tooling derive the next semver bump and generate a changelog automatically. Squash-merge a PR and the messy WIP history collapses to one clean commit on main while the branch keeps the detail.
+          </p>
+        </Card>
         <GitGraphDemo />
       </Section>
 
@@ -38,16 +65,44 @@ export default function Layer6() {
           layerId={L}
           index={1}
           title="From commit to production, reproducibly"
-          description="A broken main branch is a team-wide emergency. Fast feedback comes from running cheap checks early and expensive ones in parallel."
+          description="A broken main branch is a team-wide emergency — it blocks everyone's merge. Fast feedback comes from ordering checks by cost: cheap-and-likely-to-fail first, expensive last."
         >
           <Bullets
             items={[
-              <>Pipeline: lint → unit → integration → security scan → build → push → deploy → smoke test.</>,
-              <>Deploy strategies: rolling (default), blue-green (instant rollback), canary (% of traffic), shadow (mirror traffic).</>,
-              <>Feature flags decouple deploy from release — enable a feature for 1% of users without redeploying.</>,
+              <>Stage order is fail-fast economics: lint → unit → integration → security scan → build → push → deploy staging → smoke → deploy prod. A lint error caught in 10s never wastes a 5-minute build slot. Order them expensive-first and every typo costs the full pipeline.</>,
+              <>CI gates the merge, not the other way around: tests run on the PR <em>before</em> it reaches main, so main stays green by construction. Tests that only run post-merge mean main breaks first and you find out second.</>,
+              <>Pin every tool version — base image, Node, the actions you call. "Latest" makes the build non-reproducible: it can break with zero code changes, and the failure isn't in your diff so it's the hardest kind to debug.</>,
+              <>Deploy strategies — pick by what you need: rolling (default, gradual replace, no extra infra), blue-green (two full environments, instant atomic switch + instant rollback), canary (route 1–5% of real traffic, watch error rate, then promote), shadow (mirror prod traffic to the new version, users never see its responses).</>,
+              <>Feature flags decouple deploy from release: ship the code dark, flip it on for 1% without a redeploy, kill it instantly if it misbehaves. The catch — a flag with no removal date becomes permanent branching dead code that every future change has to reason around.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">CI/CD failure modes worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The flaky test</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                A test fails ~3% of runs from a timing race or shared fixture. The team learns to "just re-run CI." Now a <em>real</em> regression looks identical to noise — nobody trusts a red build, so red stops meaning anything.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: a flaky test is a P1 bug, not an annoyance. Quarantine it out of the merge gate immediately, then fix or delete it. A test you can't trust is worse than no test — it costs CI time and erodes the signal.
+              </p>
+            </div>
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Deploy with no rollback path</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                The deploy goes bad at 02:00. Now you're <em>designing</em> the rollback during the incident — and discover the release also ran a non-reversible DB migration, so "just deploy the old image" corrupts data.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: decide the rollback path <em>before</em> deploying. Keep migrations backward-compatible (expand/contract: add column → deploy → backfill → switch → drop later) so old and new code can both run against the same schema during the rollout window.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            Rolling vs blue-green vs canary, when each: rolling is the default — no extra cost, but during the rollout you're running both versions and a rollback is just another slow rolling update. Blue-green when you need the switch and the rollback to be <em>instant</em> and atomic, and can afford double the infra. Canary when the risk is real-traffic behavior you can't catch in staging — it trades rollout speed for a tiny blast radius.
+          </p>
+        </Card>
         <CiPipelineRunner />
       </Section>
 
@@ -56,17 +111,45 @@ export default function Layer6() {
           layerId={L}
           index={2}
           title="Namespaces + cgroups + union FS"
-          description="A container is a Linux process with extra walls — isolated namespaces (PID, NET, MNT) and constrained resources (cgroups). Same kernel, different worldview."
+          description="A container is a Linux process with extra walls — isolated namespaces (PID, NET, MNT) and constrained resources (cgroups). Same kernel, different worldview. (The kernel mechanics live in L2; here it's how to build images that are small, fast, and safe.)"
         >
           <Bullets
             items={[
-              <>Multi-stage builds: build in one image, copy artifacts to a minimal runtime image.</>,
-              <>Order Dockerfile layers by change frequency. <InlineCode>COPY package.json</InlineCode> before <InlineCode>COPY src/</InlineCode> = better cache hits.</>,
-              <>Run as non-root, drop all Linux capabilities, mount root read-only.</>,
-              <>Networks: bridge (default), host (no isolation), overlay (Swarm).</>,
+              <>Multi-stage builds: a heavy build stage with the compiler, dev deps, and source; a minimal runtime stage that <InlineCode>COPY --from=build</InlineCode>s only the artifact. Single-stage ships the whole toolchain to prod — a bigger attack surface, slower pulls, and CVEs in tools you don't even run.</>,
+              <>Each Dockerfile instruction is a content-addressed layer; the build cache reuses a layer only if it <em>and every layer above it</em> are unchanged. Order by change frequency: <InlineCode>COPY package.json</InlineCode> + <InlineCode>RUN npm ci</InlineCode> (changes rarely) before <InlineCode>COPY src/</InlineCode> (changes every commit). Reverse them and every one-line code edit re-runs <InlineCode>npm ci</InlineCode> — minutes added to every CI build.</>,
+              <>Run as a non-root <InlineCode>USER</InlineCode>, drop all Linux capabilities, mount the root filesystem read-only. A container escape from a root process is a root process on the host; from an unprivileged read-only one it's far less useful.</>,
+              <>Pin a specific base tag (<InlineCode>node:20.11-alpine</InlineCode>), never <InlineCode>:latest</InlineCode>. <InlineCode>:latest</InlineCode> silently changes under you — last week's reproducible build is unbuildable today, and a known-good image can rebuild with new CVEs. Scan images in CI (Trivy/Snyk) so the supply chain is checked, not assumed.</>,
+              <>One process per container, logs to stdout/stderr — let the platform collect and ship them. A container that writes its own log files reinvents log rotation badly and loses the logs when it's rescheduled.</>,
+              <>Networks: bridge (default, NAT'd per-host), host (shares the host stack — no isolation, no port mapping), overlay (cross-host, for Swarm/multi-node).</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">Docker failure modes worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The cache-busting COPY</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Someone moves <InlineCode>COPY . .</InlineCode> above the dependency install "to simplify the Dockerfile." Now every layer below it depends on the full source tree, so any code change invalidates the dependency layer too — <InlineCode>npm ci</InlineCode> / <InlineCode>go mod download</InlineCode> re-runs on every single build.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: copy the lockfile alone, install, <em>then</em> copy source. Add a <InlineCode>.dockerignore</InlineCode> so <InlineCode>node_modules</InlineCode>, <InlineCode>.git</InlineCode>, and build output don't enter the context and bust the cache for unrelated reasons.
+              </p>
+            </div>
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">The secret baked into a layer</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                A build needs a private registry token, so it lands in an <InlineCode>ARG</InlineCode> or an early <InlineCode>RUN</InlineCode>. Even if a later layer deletes it, the layer that <em>added</em> it is still in the image — anyone who pulls the image can <InlineCode>docker history</InlineCode> it back out.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: use BuildKit secret mounts (<InlineCode>RUN --mount=type=secret</InlineCode>) — the secret is available during that step but never written to a layer. For runtime config, inject env vars / mounted secrets at <InlineCode>docker run</InlineCode>, never at build.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            Image size is latency you pay on every cold start, every autoscale event, every node replacement. A 1.2&nbsp;GB single-stage image vs a 90&nbsp;MB multi-stage one is the difference between a pod that's ready in seconds and one that holds up a deploy while it pulls.
+          </p>
+        </Card>
         <DockerLayers />
       </Section>
 
@@ -75,17 +158,47 @@ export default function Layer6() {
           layerId={L}
           index={3}
           title="Declarative orchestration"
-          description="You declare desired state in YAML; controllers reconcile cluster reality to match. The control plane is just a database (etcd) with watchers."
+          description="You declare desired state in YAML; controllers reconcile cluster reality to match. The control plane is just a database (etcd) with watchers — every object is a row, every controller a loop watching for drift."
         >
           <Bullets
             items={[
-              <>Pod = group of co-located containers sharing network and storage. Smallest deployable unit.</>,
-              <>Deployment manages ReplicaSets; ReplicaSets manage Pods. Updating Deployment rolls out new ReplicaSet.</>,
-              <>Service = stable virtual IP and DNS for a pool of pods (selected by label).</>,
-              <>Ingress = HTTP routing rules + TLS termination, implemented by nginx-ingress, Traefik, etc.</>,
+              <>Pod = one or more co-located containers sharing a network namespace and volumes. Smallest deployable unit, and treated as cattle: a Pod has no stable identity, gets a new IP every restart, and is never edited in place — the controller deletes and recreates.</>,
+              <>Deployment → ReplicaSet → Pods. A rolling update creates a <em>new</em> ReplicaSet and shifts replicas over per <InlineCode>maxSurge</InlineCode>/<InlineCode>maxUnavailable</InlineCode>; a rollback just scales the old ReplicaSet back up. Pick the workload object by need: Deployment (stateless), StatefulSet (stable name + per-pod storage, e.g. a DB), DaemonSet (one per node, e.g. a log agent), Job/CronJob (run-to-completion).</>,
+              <>Always set resource <InlineCode>requests</InlineCode> and <InlineCode>limits</InlineCode>. Requests are what the scheduler reserves — omit them and it bin-packs blindly, so one pod can starve a node. Hit the memory limit and the kernel OOM-kills the container; exceed the CPU limit and you're throttled, not killed (a quieter, sneakier latency bug).</>,
+              <>Liveness vs readiness are <em>not</em> the same probe: readiness gates traffic (fail → removed from the Service's endpoints, pod keeps running), liveness restarts the pod (fail → kubelet kills it). Mixing them up is a classic outage — see the card below.</>,
+              <>Service = stable virtual IP + DNS name for a label-selected pool of Pods; it only routes to <em>ready</em> endpoints. ClusterIP for internal traffic; Ingress for HTTP routing + TLS termination at the edge (implemented by nginx-ingress, Traefik, etc.).</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">Kubernetes failure modes worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Liveness probe restart loop</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                The liveness probe hits an endpoint that's slow under load (or depends on a slow downstream). Under traffic it times out, kubelet "fixes" the pod by killing it, the fresh pod is cold and slower still — <InlineCode>CrashLoopBackOff</InlineCode> caused entirely by the health check, not the app.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: liveness should test <em>only</em> "is this process wedged" — a cheap local check, generous <InlineCode>timeoutSeconds</InlineCode> and <InlineCode>failureThreshold</InlineCode>. Put dependency checks in <em>readiness</em>: a struggling pod drops out of rotation and recovers instead of being killed.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Secrets treated as encrypted</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                A K8s <InlineCode>Secret</InlineCode> is just base64 — encoding, not encryption. Anyone with read access to the namespace, or to an etcd backup, can decode it instantly. Committing the manifest to git publishes the credential.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: enable etcd encryption-at-rest, RBAC-restrict who can read Secrets, and keep them out of git via sealed-secrets / external-secrets backed by a real KMS. ConfigMap is for non-sensitive config <em>only</em>.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            <strong>No readiness probe at all:</strong> the Service adds a Pod to its endpoints the moment the container <em>starts</em>, not when the app is ready to serve. During every rollout, traffic hits pods still loading config or warming connection pools — a burst of 502s on every deploy that looks random because it self-heals in seconds.
+          </p>
+          <p className="mt-2 text-[13px] leading-relaxed text-ink-faint">
+            <strong>PodDisruptionBudget</strong> caps how many replicas a <em>voluntary</em> disruption (node drain, cluster upgrade) can take down at once. Without one, a routine node drain can evict every replica of a service simultaneously — a self-inflicted outage during planned maintenance.
+          </p>
+        </Card>
         <K8sTopology />
         <MermaidDiagram
           chart={`flowchart LR
@@ -110,10 +223,47 @@ export default function Layer6() {
           layerId={L}
           index={4}
           title="Code your infrastructure"
-          description="Terraform/Pulumi turn 'click around in the AWS console' into reviewable PRs. State files are sacred — back them up, lock them, encrypt them."
+          description="Terraform/Pulumi turn 'click around in the AWS console' into reviewable PRs. The state file is the source of truth — and the single thing that, corrupted, takes the whole environment down."
         >
-          <CloudGrid />
+          <Bullets
+            items={[
+              <>State maps your code to real cloud resource IDs. <InlineCode>plan</InlineCode> diffs (code) vs (state) vs (live cloud) and shows what <InlineCode>apply</InlineCode> will change — always read the plan; it <em>is</em> the diff, and a reviewed plan is the only thing standing between a typo and a deleted database.</>,
+              <>Remote, locked state (S3 + DynamoDB lock, or Terraform Cloud) — not a local file. Local state is one laptop away from total loss, and two engineers running <InlineCode>apply</InlineCode> at once with no lock interleave writes and corrupt it.</>,
+              <>Console click-ops causes drift: the live cloud no longer matches the code, so the next <InlineCode>plan</InlineCode> wants to "fix" (revert) the manual change — or fails outright. All infra in code, changed only through the repo.</>,
+              <>Modules for repeated patterns (a "service" module instantiated per environment) instead of copy-pasted dirs that silently diverge. Encrypt state and never commit <InlineCode>.tfstate</InlineCode> — it holds resource attributes including generated passwords in plaintext.</>,
+              <>Prefer cloud IAM roles + OIDC over long-lived access keys: the CI job assumes a short-lived role scoped to exactly what it needs. A leaked static key is a standing breach; an OIDC token expires in minutes.</>,
+            ]}
+          />
+          <div className="mt-4">
+            <CloudGrid />
+          </div>
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">IaC failure modes worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Corrupted / lost state</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Two concurrent <InlineCode>apply</InlineCode>s on unlocked state, or a deleted local <InlineCode>.tfstate</InlineCode>. Terraform now thinks resources that exist don't — so the next <InlineCode>apply</InlineCode> tries to <em>recreate</em> a live database, or orphans it (still billing, now unmanaged).
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: remote backend with locking and versioning from day one — S3 versioning lets you roll state back. Recover individual resources with <InlineCode>terraform import</InlineCode> rather than re-applying.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The unread plan</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                You change a tag and <InlineCode>apply</InlineCode> without reading the plan. Buried in it: a change to an immutable attribute that forces <InlineCode>destroy → create</InlineCode> on the RDS instance. The "tag tweak" just took prod down and lost the data.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: <InlineCode>plan</InlineCode> in CI on the PR, post it for review, gate <InlineCode>apply</InlineCode> on approval. Watch for <InlineCode>-/+ destroy and then create</InlineCode> on stateful resources — that line is the difference between a config change and an outage.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            Managed vs self-hosted, when each: managed (RDS, Cloud SQL, EKS control plane) buys back the undifferentiated ops — patching, backups, failover — at a premium and some lock-in. Self-host only when you need control the managed service won't give you and have the on-call depth to own it at 3am. For a solo operator the answer is almost always managed.
+          </p>
+        </Card>
         <CodePlayground
           mode="js"
           height={220}
@@ -142,17 +292,44 @@ console.log('Run: terraform init && terraform plan && terraform apply');`}
           layerId={L}
           index={5}
           title="Logs, metrics, traces"
-          description="Logs say 'what happened'. Metrics say 'how much, how fast'. Traces say 'where time was spent'. You need all three."
+          description="Logs say 'what happened and why'. Metrics say 'how much, how fast'. Traces say 'where the time went'. The real test: can on-call diagnose this at 3am from these alone, without attaching a debugger?"
         >
           <Bullets
             items={[
-              <>Structured JSON logs with <InlineCode>request_id</InlineCode>, <InlineCode>user_id</InlineCode>, <InlineCode>service</InlineCode>, <InlineCode>level</InlineCode>.</>,
-              <>Prometheus pulls metrics; Grafana visualizes; Alertmanager routes pages.</>,
-              <>OpenTelemetry: vendor-neutral SDK; instrument once, export anywhere.</>,
-              <>SLO &gt; SLA: if you only have an SLA, you're behind. Burn-rate alerts catch problems early.</>,
+              <>Structured JSON logs with <InlineCode>timestamp</InlineCode>, <InlineCode>level</InlineCode>, <InlineCode>service</InlineCode>, and a <InlineCode>request_id</InlineCode>/<InlineCode>correlation_id</InlineCode> threaded through every service the request touches. String-interpolated logs (<InlineCode>"user 42 failed login"</InlineCode>) can't be queried or aggregated — you can't ask "how many failures in the last hour" of free text. Never log secrets or PII; logs fan out to many systems.</>,
+              <>Metrics are cheap (a counter, not a row per event) — that's why they drive dashboards and alerts. Prometheus <em>pulls</em> metrics on a schedule (a missing target is itself a signal); Grafana visualizes; Alertmanager routes and dedupes pages. Traces are expensive, so sample them — they're for "<em>where</em> did this one slow request spend its 800ms across 6 services."</>,
+              <>Use the three together: a metric alert fires (error rate up) → logs filtered by <InlineCode>request_id</InlineCode> show <em>what</em> errored → the trace shows <em>which hop</em> caused it. Each pillar answers a different question; one alone leaves you guessing.</>,
+              <>OpenTelemetry is the vendor-neutral SDK + wire format — instrument once, export to any backend, propagate W3C trace context across service boundaries so a trace doesn't break at the network edge. Avoids re-instrumenting the codebase every time you switch vendors.</>,
+              <>SLI = the measurement, SLO = the target you hold yourself to, SLA = the contract with a customer (and a penalty). Error budget = 1 − SLO; spend it on shipping, and when it's exhausted, stop feature work and fix reliability. Burn-rate alerts page when you're <em>consuming</em> the budget too fast — before it's gone, not after.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">Observability failure modes worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Alerting on causes, not symptoms</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                You page on "CPU &gt; 80%." It fires at 3am — but CPU is high because of a harmless batch job, users are fine, and there's nothing to <em>do</em>. Meanwhile a real outage where CPU stayed at 40% never paged at all.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: page on symptoms users feel — error rate, latency, request success. CPU/memory/queue depth are <em>dashboard</em> signals you check <em>after</em> a symptom alert, to find the cause. Every page must be actionable.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Alert fatigue</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Dozens of low-value alerts fire daily. On-call learns to swipe them away — so the one alert that mattered gets swiped away too. A noisy alerting system is functionally the same as having none.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: page-worthy means "a human must act <em>now</em>." Everything else is a dashboard or a ticket. Burn-rate windows (fast burn → page, slow burn → ticket) keep the page volume tied to actual urgency.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            <strong>Averages hide the pain.</strong> A 200ms <em>average</em> latency can hide a p99 of 4s — and the p99 is a real slice of real users, often your heaviest ones. Alert and design against percentiles (p95/p99), never the mean. Connects to L7: tail latency is what compounds across a fan-out of service calls.
+          </p>
+        </Card>
         <SloDashboard />
       </Section>
 

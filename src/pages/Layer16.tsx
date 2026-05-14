@@ -20,6 +20,15 @@ export default function Layer16() {
           title="Process data of any size with constant memory"
           description="Streams flow chunks through pipelines: Readable → Transform → Writable. Backpressure pauses upstream when downstream is slow. Unzipping a 10 GB file uses kilobytes of RAM."
         >
+          <Bullets
+            items={[
+              <>Backpressure is not magic — it's a return value. <InlineCode>writable.write(chunk)</InlineCode> returns <InlineCode>false</InlineCode> when its internal buffer crosses <InlineCode>highWaterMark</InlineCode> (16 KB for byte streams, 16 objects for object mode). The Readable feeding it must then stop calling <InlineCode>.write()</InlineCode> and wait for the <InlineCode>'drain'</InlineCode> event. <InlineCode>pipe()</InlineCode>/<InlineCode>pipeline()</InlineCode> wire that handshake for you — that's the entire point of using them.</>,
+              <>Use <InlineCode>{'stream/promises'}</InlineCode> <InlineCode>pipeline()</InlineCode>, never raw <InlineCode>.pipe()</InlineCode> chains. On a downstream error <InlineCode>pipeline</InlineCode> destroys <em>every</em> stream and rejects; <InlineCode>.pipe()</InlineCode> leaves the source open and still flowing — a leaked file descriptor / socket per failed request.</>,
+              <>The moment you do <InlineCode>{"for await (const row of stream) results.push(row)"}</InlineCode> or <InlineCode>{"stream.on('data', ...)"}</InlineCode> into an array, you have deleted the constant-memory guarantee — you rebuilt the unbounded buffer streams exist to prevent. If you must collect, bound it (batch of N, then flush).</>,
+              <>Transform streams are the unit of composition: <InlineCode>{'transform(chunk, enc, cb)'}</InlineCode> in, <InlineCode>{'this.push()'}</InlineCode> out. The exact same pipeline shape works for files, HTTP req/res, TCP sockets, a Postgres cursor, an S3 body — async iterables and Web Streams (<InlineCode>{'ReadableStream'}</InlineCode>) interop via <InlineCode>{'Readable.fromWeb / .toWeb'}</InlineCode>.</>,
+              <>Failure mode that hides: an <InlineCode>objectMode</InlineCode> stream with a slow consumer and a fast producer that <em>ignores</em> the <InlineCode>false</InlineCode> return. Memory climbs steadily, no error, no crash until the OOM killer — because each buffered object can be arbitrarily large, <InlineCode>highWaterMark</InlineCode>'s "16" stops meaning anything.</>,
+            ]}
+          />
           <StreamsAnimator />
         </TopicCard>
         <CodePlayground
@@ -54,8 +63,40 @@ console.log('Streams in pseudo-code above. Same shape works for HTTP req/res, S3
           title="Six phases, two queues"
           description="Each turn of the loop walks through six phases (timers → pending → idle → poll → check → close). Microtasks (process.nextTick, Promises) drain between every phase, not just at the end."
         >
+          <Bullets
+            items={[
+              <>The loop is a scheduler you can starve. A synchronous CPU loop in one request handler blocks <em>every</em> connection, every timer, every I/O callback — not just the slow request. The fix is a worker, not a smaller loop (see 16.3).</>,
+              <>Microtasks drain to empty between <em>every</em> phase, not once at the end. <InlineCode>process.nextTick</InlineCode> runs before Promise callbacks — and a recursive <InlineCode>nextTick</InlineCode> never lets the loop reach the poll phase, so I/O is starved forever while the process pegs a core. Promises are slightly safer (they yield to the next microtask checkpoint) but a tight Promise chain stalls the same way.</>,
+              <><InlineCode>setImmediate</InlineCode> vs <InlineCode>setTimeout(fn, 0)</InlineCode> is decided by <em>where you call it</em>. Inside an I/O callback (you're in the poll phase) <InlineCode>setImmediate</InlineCode> fires this same turn — the very next phase is <strong>check</strong>. <InlineCode>setTimeout(0)</InlineCode> waits for the <strong>timers</strong> phase of the next turn. So to "yield after I/O and resume soon," reach for <InlineCode>setImmediate</InlineCode>. (At top level, the order is non-deterministic — it depends on how fast the loop reaches each phase.)</>,
+              <>"Async" only means non-blocking if the work is actually I/O. <InlineCode>fs.readFileSync</InlineCode>, <InlineCode>JSON.parse</InlineCode> on a 40 MB payload, <InlineCode>crypto.pbkdf2Sync</InlineCode>, a regex with catastrophic backtracking — all run <em>on</em> the loop thread and block it. <InlineCode>crypto.pbkdf2</InlineCode> (async) is different: it runs on the libuv threadpool.</>,
+              <>The libuv threadpool (default 4 threads, <InlineCode>UV_THREADPOOL_SIZE</InlineCode>) handles <InlineCode>fs.*</InlineCode>, DNS <InlineCode>lookup</InlineCode>, and async crypto/zlib. Network sockets do <em>not</em> use it — they use the OS event mechanism (epoll/kqueue) directly. So 5 concurrent file reads serialize behind 4 threads; 5000 concurrent HTTP requests do not.</>,
+            ]}
+          />
           <NodeEventLoopDiagram />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">Event-loop failures worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Loop stall (the "Node is slow" myth)</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                p50 latency is 2 ms, p99 is 900 ms. Not the DB — a synchronous hot path (template render, big <InlineCode>JSON.parse</InlineCode>, sync hash) blocks the loop for tens of ms each call. Every request queued behind it eats that delay.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Detect: monitor event-loop lag (<InlineCode>perf_hooks.monitorEventLoopDelay</InlineCode>) and alert on it like you alert on CPU. Fix: move the work to a worker, or chunk it with <InlineCode>setImmediate</InlineCode> so the loop breathes between slices.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">nextTick starvation</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                A recursive <InlineCode>process.nextTick</InlineCode> (or an unbounded Promise loop) re-queues a microtask faster than the loop can drain it. The loop never reaches the poll phase — no new connections accepted, no timers fire, health check times out, orchestrator kills the "healthy" pod.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Why it's sneaky: CPU is 100% but there's no error and no stack to blame. Break recursion with <InlineCode>setImmediate</InlineCode> instead of <InlineCode>nextTick</InlineCode> when you genuinely need to defer in a loop.
+              </p>
+            </div>
+          </div>
+        </Card>
       </Section>
 
       <Section id="workers" kicker="16.3" title="Cluster · Worker Threads · Child Process">
@@ -65,6 +106,15 @@ console.log('Streams in pseudo-code above. Same shape works for HTTP req/res, S3
           title="Three ways to escape single-threaded JS"
           description="Use worker_threads for CPU-bound JS. Use cluster for HTTP scaling on multi-core. Use child_process for shelling out or running other binaries."
         >
+          <Bullets
+            items={[
+              <>The decision is by <em>job</em>, not preference: CPU-bound <strong>JS</strong> → <InlineCode>worker_threads</InlineCode>; HTTP throughput across cores → <InlineCode>cluster</InlineCode> (or just run N containers behind a load balancer — usually simpler); run a <strong>non-JS</strong> binary or need real isolation → <InlineCode>child_process</InlineCode>. Substituting one for another is the classic mistake — <InlineCode>child_process</InlineCode> for CPU-bound JS pays process-spawn + IPC cost for nothing; <InlineCode>cluster</InlineCode> expecting shared in-memory state silently gives each worker its own copy.</>,
+              <><InlineCode>postMessage</InlineCode> uses the structured-clone algorithm — it <em>deep-copies</em> the object across the thread boundary. Sending a 50 MB parsed buffer copies 50 MB and blocks both threads while it serializes. Two escapes: pass an <InlineCode>ArrayBuffer</InlineCode> in the transfer list (ownership moves, zero-copy, but the sender loses access), or back the data with <InlineCode>SharedArrayBuffer</InlineCode> so both threads see the same memory.</>,
+              <><InlineCode>SharedArrayBuffer</InlineCode> earns its keep only when threads need to <em>both</em> touch the same large mutable buffer repeatedly (image pipeline, simulation, a parsed dataset queried by many workers). It buys you data races too — coordinate with <InlineCode>Atomics.wait/notify</InlineCode>. For request/response work, plain <InlineCode>postMessage</InlineCode> copies are fine; don't reach for shared memory to "optimize" a hash-once worker.</>,
+              <>Workers aren't free — each is a fresh V8 isolate (~a few MB heap + startup time). For frequent small tasks, pool them (e.g. <InlineCode>piscina</InlineCode>) and reuse; spawning one per request just moves the bottleneck to thread creation.</>,
+              <><InlineCode>cluster</InlineCode> gives zero shared-memory bugs because there's zero shared memory — every worker is a full process. That's also the cost: a session cache, a rate-limit counter, an in-memory queue must move to Redis or the DB, or each core enforces its own limit independently.</>,
+            ]}
+          />
           <WorkersPicker />
         </TopicCard>
       </Section>
@@ -76,6 +126,15 @@ console.log('Streams in pseudo-code above. Same shape works for HTTP req/res, S3
           title="The interop pain you cannot avoid"
           description="Half the ecosystem is ESM, half is CJS. Top-level await, default exports, __dirname, dynamic require — every team hits these traps."
         >
+          <Bullets
+            items={[
+              <><strong><InlineCode>ERR_REQUIRE_ESM</InlineCode></strong> — CJS code did <InlineCode>require()</InlineCode> on an ESM-only package (common since libraries like <InlineCode>chalk</InlineCode>, <InlineCode>node-fetch</InlineCode>, <InlineCode>execa</InlineCode> went ESM-only). Fix: <InlineCode>const x = await import('pkg')</InlineCode> — but that forces the call site async. The real fix is to migrate the file to ESM. (Node 22+ can <InlineCode>require()</InlineCode> a synchronous ESM graph, but don't rely on it across versions.)</>,
+              <><strong><InlineCode>ReferenceError: __dirname is not defined</InlineCode></strong> — ESM has no <InlineCode>__dirname</InlineCode>/<InlineCode>__filename</InlineCode>. One-line fix: <InlineCode>{"const __dirname = path.dirname(fileURLToPath(import.meta.url))"}</InlineCode>. (Node 20.11+ also exposes <InlineCode>import.meta.dirname</InlineCode> directly.)</>,
+              <><strong>"x is not a function" after importing a CJS module</strong> — a CJS <InlineCode>module.exports = fn</InlineCode> lands as the ESM <em>default</em> import, and named exports are best-effort statically analyzed. Fix: <InlineCode>import pkg from 'cjs-lib'</InlineCode> then destructure, not <InlineCode>{"import { thing }"}</InlineCode> — or check the package's <InlineCode>exports</InlineCode> map.</>,
+              <><strong><InlineCode>ERR_UNSUPPORTED_DIR_IMPORT</InlineCode> / unresolved relative import</strong> — ESM does no extension guessing and no directory-index resolution. <InlineCode>import './utils'</InlineCode> fails; you must write <InlineCode>import './utils/index.js'</InlineCode> — the <InlineCode>.js</InlineCode> literally, even when the source is <InlineCode>.ts</InlineCode>. This is the single biggest friction porting a TS codebase to ESM.</>,
+              <>Top-level <InlineCode>await</InlineCode> is ESM-only — convenient, but it <em>blocks the importing module's evaluation</em>. A slow TLA in a shared module delays everything downstream of it. The <InlineCode>"type"</InlineCode> field in <InlineCode>package.json</InlineCode> is the switch: <InlineCode>"module"</InlineCode> makes <InlineCode>.js</InlineCode> ESM, absent/<InlineCode>"commonjs"</InlineCode> makes it CJS; <InlineCode>.mjs</InlineCode>/<InlineCode>.cjs</InlineCode> override per-file.</>,
+            ]}
+          />
           <EsmCjsMatrix />
         </TopicCard>
       </Section>
@@ -87,6 +146,15 @@ console.log('Streams in pseudo-code above. Same shape works for HTTP req/res, S3
           title="They all install — they don't all install the same"
           description="pnpm is the modern default for workspaces and disk efficiency. Bun is fastest. npm ships with Node and is fine for small projects. Yarn berry has a steep learning curve."
         >
+          <Bullets
+            items={[
+              <><strong>pnpm's edge is the layout, not just speed.</strong> It keeps one content-addressed store on disk and hardlinks packages into each project — ten projects on <InlineCode>react@18.2</InlineCode> store it once. And its <InlineCode>node_modules</InlineCode> is a symlinked tree where a package can only <InlineCode>require</InlineCode> what it actually declared.</>,
+              <><strong>That strictness kills "phantom dependencies."</strong> With npm's flat hoisting, your code can <InlineCode>import 'lodash'</InlineCode> even though <em>a dependency</em> pulled it in — it works locally, then breaks the day that transitive dep drops lodash. pnpm makes that an error at install/build time, where it's cheap to fix.</>,
+              <><strong>The lockfile is what actually pins versions — not the range in <InlineCode>package.json</InlineCode>.</strong> <InlineCode>^1.2.3</InlineCode> is a <em>range</em>; the lockfile records the exact tree that resolved last time. Commit it always, and use <InlineCode>npm ci</InlineCode> / <InlineCode>pnpm install --frozen-lockfile</InlineCode> in CI so a build can't silently float to a new version.</>,
+              <><InlineCode>^</InlineCode> bites everyone exactly once: a "patch" release of a transitive dep ships a regression, your range happily accepts it, and a build that passed yesterday fails today with no code change. The lockfile is the seatbelt — but only if it's committed and CI respects it.</>,
+              <><strong>Pick by commitment level.</strong> npm: ships with Node, fine for small projects and OSS libs. pnpm: the 2026 default for anything with a workspace. Bun: fastest, but you're adopting the Bun <em>runtime</em>'s ecosystem, not just its installer. Yarn Berry (PnP, zero-installs): large monorepos with a team patient enough for the PnP resolution model.</>,
+            ]}
+          />
           <PkgManagerCompare />
           <SemverBox />
         </TopicCard>
@@ -99,6 +167,15 @@ console.log('Streams in pseudo-code above. Same shape works for HTTP req/res, S3
           title="Pick the smallest one that fits"
           description="Express is everywhere but slow. Fastify is the modern Express. Hono is edge-first and tiny. NestJS is opinionated and TypeScript-native. Native fetch + node:http is sometimes enough."
         >
+          <Bullets
+            items={[
+              <><strong>Fastify is the default for a new Node HTTP service.</strong> The reason isn't raw speed — it's the schema. You declare a JSON Schema per route; Fastify validates the request <em>and</em> compiles a fast serializer for the response from it. That's validation, OpenAPI docs, and TS types from one source instead of three drifting copies.</>,
+              <><strong>Express's real cost in 2026 is the type story, not the throughput.</strong> Types are bolt-on (<InlineCode>@types/express</InlineCode>), <InlineCode>req.body</InlineCode> is <InlineCode>any</InlineCode>, and Express ≤4 silently swallows a rejected promise from an <InlineCode>async</InlineCode> handler — the request just hangs until timeout. Express 5 awaits handlers, but the ecosystem still assumes 4. New code only if a specific middleware demands it.</>,
+              <><strong>Hono vs Fastify is a runtime question, not a feature question.</strong> Hono is built on Web Standard APIs (<InlineCode>Request</InlineCode>/<InlineCode>Response</InlineCode>), so the same code runs on Cloudflare Workers, Deno, Bun, and Node. Pick Hono when you deploy to the edge or want runtime portability; pick Fastify when you're committed to the Node runtime and want its mature plugin ecosystem (auth, rate-limit, swagger).</>,
+              <><strong>NestJS buys structure, and structure has a price.</strong> Modules + DI + decorators pay off when a large team needs enforced conventions and the app is genuinely layered. On a solo project it's mostly boilerplate and a steeper stack trace. Reach for it because the <em>team</em> benefits, not because it looks "enterprise."</>,
+              <><strong><InlineCode>node:http</InlineCode> is a real choice for tiny things</strong> — a health-check sidecar, a webhook receiver, a metrics endpoint. No dependency to audit or upgrade. <strong>tRPC</strong> on top of Fastify/Hono erases the client/server schema boundary entirely — best when one TS monorepo owns both ends.</>,
+            ]}
+          />
           <FrameworkMatrix />
         </TopicCard>
       </Section>
@@ -110,6 +187,16 @@ console.log('Streams in pseudo-code above. Same shape works for HTTP req/res, S3
           title="Pick the lowest level you can stand"
           description="Drizzle and Kysely are SQL-first with type safety. Prisma is best DX but generates code and abstracts SQL. TypeORM is older and divisive. Plain SQL with a tiny type-helper is also fine."
         >
+          <Bullets
+            items={[
+              <>The axis that decides it: <strong>how much does the tool stand between you and the SQL?</strong> Kysely &lt; Drizzle &lt; Prisma. Coming from Go's <InlineCode>sqlc</InlineCode>, you already think in SQL — Drizzle or Kysely will feel native; Prisma's fluent API will feel like a layer you have to reverse-engineer when a query is slow.</>,
+              <><strong>Prisma's cost is the abstraction, paid at debug time.</strong> Its DX is genuinely the best — autocomplete, relations, migrations. But you can't see the SQL without <InlineCode>log: ['query']</InlineCode>, and its relation loading historically issued multiple round-trips (the N+1 you didn't write). It also runs a separate query engine and has real edge-runtime limits. Pick it when DX dominates and the team isn't SQL-fluent.</>,
+              <><strong>Drizzle is the modern default for new projects.</strong> It's a thin typed SQL builder — the query you write is the SQL that runs, types are inferred from the schema you define in TS, the bundle is small, and it works on edge runtimes. The trade-off: less hand-holding than Prisma, and migrations (<InlineCode>drizzle-kit</InlineCode>) are younger and less polished.</>,
+              <><strong>Kysely is a query builder, not an ORM</strong> — no schema DSL, no migration engine of its own, no entities. Just fully type-safe SQL. Pick it when you want SQL with types and <em>nothing else</em>; pair it with a standalone migration tool.</>,
+              <><strong>The trap common to all of them: connection pooling under serverless.</strong> Each lambda/edge instance opens its own pool; 200 concurrent invocations = 200× the connections, and Postgres falls over at <InlineCode>max_connections</InlineCode>. The fix is a proxy (PgBouncer, Prisma Accelerate, Neon's pooler), not a bigger DB — this is an L6/L7 deployment concern the ORM choice surfaces.</>,
+              <>TypeORM/Sequelize are maintenance-mode picks — decorators need <InlineCode>experimentalDecorators</InlineCode>, types feel bolted on. <strong><InlineCode>sql</InlineCode> + <InlineCode>zod</InlineCode></strong> (plain strings, parsed at runtime) is a legitimate floor, not a fallback — closest to the <InlineCode>sqlc</InlineCode> philosophy.</>,
+            ]}
+          />
           <OrmMatrix />
         </TopicCard>
       </Section>
@@ -123,10 +210,12 @@ console.log('Streams in pseudo-code above. Same shape works for HTTP req/res, S3
         >
           <Bullets
             items={[
-              <>Subscribe to <InlineCode>process.on('unhandledRejection')</InlineCode> and <InlineCode>uncaughtException</InlineCode> — log + exit, don't continue.</>,
-              <>Wrap Express handlers: <InlineCode>{'app.get("/x", (req, res, next) => fn(req).catch(next))'}</InlineCode> — or use express-async-handler.</>,
-              <>Use <InlineCode>{'AggregateError'}</InlineCode> for parallel failures (<InlineCode>{'Promise.allSettled'}</InlineCode>).</>,
-              <>Custom error classes carry HTTP status: <InlineCode>{'class HttpError extends Error { status: number }'}</InlineCode>.</>,
+              <>An unhandled rejection means your process is in an <em>unknown</em> state — a step you assumed completed didn't. Subscribe to <InlineCode>process.on('unhandledRejection')</InlineCode> and <InlineCode>uncaughtException</InlineCode>, log with full context, then <strong>exit</strong> and let the supervisor restart clean. Continuing is how a single lost <InlineCode>await</InlineCode> becomes corrupted data an hour later.</>,
+              <>Errors thrown inside <InlineCode>setTimeout</InlineCode>/<InlineCode>setImmediate</InlineCode> callbacks do <strong>not</strong> bubble to the surrounding <InlineCode>try/catch</InlineCode> — the callback runs on a fresh stack in a later loop phase, the <InlineCode>try</InlineCode> is long gone. Wrap the callback body itself, or it goes straight to <InlineCode>uncaughtException</InlineCode>.</>,
+              <>Express ≤4 doesn't catch a rejected promise from an <InlineCode>async</InlineCode> handler — the response just hangs until the client times out. Wrap: <InlineCode>{'(req, res, next) => fn(req, res).catch(next)'}</InlineCode>, or use <InlineCode>express-async-handler</InlineCode>. Fastify and Express 5 await handlers natively, so the wrapper isn't needed there.</>,
+              <><InlineCode>Promise.all</InlineCode> rejects on the <em>first</em> failure and abandons the rest — the other promises still run, but their results (and errors) are lost. When every result matters, use <InlineCode>Promise.allSettled</InlineCode>, collect the <InlineCode>rejected</InlineCode> reasons, and throw an <InlineCode>AggregateError</InlineCode> so you see all failures, not just the fastest one.</>,
+              <>Never <InlineCode>{"catch (e) { console.log('error') }"}</InlineCode> — that discards the stack and the cause, leaving an undebuggable production log line. Rethrow with context: <InlineCode>{"throw new Error('charge failed for ' + id, { cause: e })"}</InlineCode>. The <InlineCode>cause</InlineCode> chain preserves the original stack.</>,
+              <>Custom error classes carry HTTP status (<InlineCode>{'class HttpError extends Error { status: number }'}</InlineCode>) so one error-handling middleware at the boundary maps any thrown error to the right response — domain code throws, the boundary translates.</>,
             ]}
           />
         </TopicCard>
@@ -172,6 +261,15 @@ console.log('Patterns above. Always wrap async; never silently catch.');`}
           title="--inspect, heap snapshots, graceful shutdown"
           description="Connect Chrome DevTools to a running Node process. Snapshot the heap to find leaks. Always handle SIGTERM and drain in-flight requests."
         >
+          <Bullets
+            items={[
+              <><strong>Graceful shutdown is not optional — it's what makes a deploy invisible.</strong> On <InlineCode>SIGTERM</InlineCode>: stop accepting new connections (<InlineCode>server.close()</InlineCode>), let in-flight requests finish, close the DB pool and queue consumers, <em>then</em> <InlineCode>process.exit(0)</InlineCode>. Skip it and every rolling deploy resets live connections mid-request. The orchestrator gives you a grace window (~30 s) then <InlineCode>SIGKILL</InlineCode>s you — so also set a hard timeout so a stuck request can't hang the shutdown.</>,
+              <><strong>Find a leak by diffing, not staring.</strong> Take a heap snapshot, exercise the suspected path, take a second snapshot, use DevTools' "Comparison" view — the objects with positive retained-size delta are your leak. The usual culprits: an unbounded <InlineCode>Map</InlineCode>/array used as a cache, listeners added per-request and never removed, closures holding a big buffer alive.</>,
+              <><strong>"It's slow" splits into two different tools.</strong> CPU-bound (loop pegged) → <InlineCode>--cpu-prof</InlineCode> or a flame graph (<InlineCode>clinic flame</InlineCode>, <InlineCode>0x</InlineCode>) to find the hot function. Latency with idle CPU → it's I/O wait or event-loop lag; measure <InlineCode>monitorEventLoopDelay</InlineCode> and check downstream call timings. Profiling the wrong axis wastes the afternoon.</>,
+              <><InlineCode>NODE_OPTIONS="--enable-source-maps"</InlineCode> makes stack traces point at your <InlineCode>.ts</InlineCode> source instead of transpiled <InlineCode>.js</InlineCode> with useless line numbers. Cheap, set it everywhere.</>,
+              <>A process manager (systemd, PM2) handles restart, log rotation, and env — but it does <strong>not</strong> replace the <InlineCode>SIGTERM</InlineCode> handler <em>inside</em> the app. The supervisor restarts you; only your code can drain cleanly first.</>,
+            ]}
+          />
           <DebugCheats />
         </TopicCard>
       </Section>
@@ -183,6 +281,15 @@ console.log('Patterns above. Always wrap async; never silently catch.');`}
           title="pnpm workspaces · Turborepo · Nx · Moon"
           description="Monorepos let you share types and atomic refactors across packages. Cache builds with Turborepo. Don't reach for Nx until you have ≥ 5 packages."
         >
+          <Bullets
+            items={[
+              <>The real win is the <strong>shared <InlineCode>packages/shared</InlineCode> for types and validators</strong>: the API and the web client import the <em>same</em> Zod schema, so a breaking field change is a compile error in the same PR — not a runtime 500 discovered after the published-package version drifted. That feedback loop is the reason to adopt a monorepo at all.</>,
+              <><strong>pnpm workspaces is the floor; Turborepo is the build-cache layer on top.</strong> Turbo hashes each task's inputs (source, deps, env) and skips the task entirely on a cache hit — local <em>and</em> remote — so a PR touching only <InlineCode>apps/web</InlineCode> doesn't rebuild and retest <InlineCode>apps/api</InlineCode>. That's the difference between a 6-minute and a 20-second CI run.</>,
+              <><strong>Don't reach for Nx until ≥5 packages and you feel the pain.</strong> Nx adds a project graph, generators, and plugins — powerful, but it's a framework you now also maintain. On a solo project pnpm + Turbo covers it; Nx earns its complexity at team scale.</>,
+              <><strong>The cost is boundary discipline.</strong> Nothing stops <InlineCode>apps/api</InlineCode> from deep-importing a file inside <InlineCode>apps/web</InlineCode>, and once it does, the two "packages" are one tangle that can't be built or deployed independently. Enforce it with lint rules (<InlineCode>no-restricted-imports</InlineCode>) or Nx's module boundaries — convention alone won't hold.</>,
+              <>Secondary costs to plan for: CI must understand and restore the Turbo cache or you lose the whole benefit, and the IDE / TS server slows once you have hundreds of packages — a watchful <InlineCode>tsconfig</InlineCode> project-references setup matters at that point.</>,
+            ]}
+          />
           <MonorepoLayout />
         </TopicCard>
       </Section>

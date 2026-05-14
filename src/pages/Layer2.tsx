@@ -19,14 +19,14 @@ export default function Layer2() {
           layerId={L}
           index={0}
           title="Kernel space, user space, and the boot process"
-          description="System calls are the doorway between your code and the kernel — every file read, network packet, and process spawn passes through this gate."
+          description="System calls are the doorway between your code and the kernel — every file read, network packet, and process spawn passes through this gate. The boundary exists so a buggy process can't corrupt the machine; the cost is a mode switch on every crossing."
         >
           <Bullets
             items={[
-              <>Privilege rings: Ring 0 = kernel, Ring 3 = user. Syscalls trap into ring 0 via an interrupt or <InlineCode>syscall</InlineCode> instruction.</>,
-              <>Kernel design: monolithic (Linux), microkernel (QNX), hybrid (Windows NT, macOS XNU).</>,
-              <>Boot: POST → BIOS/UEFI → MBR/GPT → bootloader (GRUB) → kernel + initramfs → systemd.</>,
-              <>Drivers: char (keyboard), block (disk), net (NIC). Each registers with the kernel on load.</>,
+              <>Privilege rings: Ring 0 = kernel, Ring 3 = user. A syscall executes the <InlineCode>syscall</InlineCode> instruction, which traps the CPU into ring 0 at a fixed kernel entry point — userland never gets to <em>jump</em> into the kernel, only request a service. Why it matters: a mode switch costs ~100ns+ of register save/restore, so a hot loop doing one <InlineCode>read()</InlineCode> per byte is pathologically slow — buffer instead. Watch it live with <InlineCode>strace -c</InlineCode> (syscall counts) or <InlineCode>perf stat</InlineCode>.</>,
+              <>Monolithic (Linux) vs microkernel (QNX, seL4) vs hybrid (Windows NT, macOS XNU). Monolithic = drivers and filesystems run in ring 0: fast (no IPC between subsystems) but a bad driver panics the box. Microkernel = drivers are user processes: a crashed driver restarts, but every disk read crosses a process boundary. Linux <em>compromised</em> with loadable kernel modules — monolithic core, drivers you can <InlineCode>insmod</InlineCode>/<InlineCode>rmmod</InlineCode> without rebooting.</>,
+              <>Boot: POST → BIOS/UEFI → MBR/GPT → bootloader (GRUB) → kernel + initramfs → systemd as PID 1. The <em>initramfs</em> exists to solve a chicken-and-egg problem: the kernel needs a driver to mount the real root filesystem, but that driver lives <em>on</em> the root filesystem. initramfs is a tiny in-RAM root with just enough drivers to mount the real one. A broken initramfs = "kernel panic - not syncing: VFS: Unable to mount root fs".</>,
+              <>Driver classes: char (stream, no seek — keyboard, <InlineCode>/dev/random</InlineCode>), block (seekable, buffered through page cache — disks), net (no <InlineCode>/dev</InlineCode> node, packets in/out). When something hangs in driver code, <InlineCode>dmesg</InlineCode> is the kernel ring buffer — it's where the actual error is, not your app log.</>,
             ]}
           />
         </TopicCard>
@@ -50,17 +50,40 @@ export default function Layer2() {
           layerId={L}
           index={1}
           title="Lifecycle, scheduling, IPC, concurrency hazards"
-          description="A process is the OS-level unit of isolation. Threads share its address space and file descriptors — they're cheap, but you pay for that with synchronization."
+          description="A process is the OS-level unit of isolation — its own address space, its own fd table. Threads share all of that: cheap to spawn and switch, but every piece of shared mutable state is now a race waiting to happen."
         >
           <Bullets
             items={[
-              <>States: created → ready → running → blocked → terminated (with <em>zombie</em> if its parent never reaps it).</>,
-              <><InlineCode>fork()</InlineCode> + <InlineCode>exec()</InlineCode> = launch. Linux uses copy-on-write so fork is cheap until you write.</>,
-              <>Linux scheduler: CFS uses a red-black tree keyed by virtual runtime. Real-time tasks use SCHED_FIFO / SCHED_RR.</>,
-              <>Coffman conditions for deadlock: mutual exclusion + hold-and-wait + no preemption + circular wait.</>,
+              <>States: created → ready → running → blocked → terminated. A <em>zombie</em> (<InlineCode>Z</InlineCode> in <InlineCode>ps</InlineCode>, "defunct") is a process that exited but whose parent never called <InlineCode>wait()</InlineCode> — the kernel keeps the exit status and PID around for the parent to read. Zombies use no memory, but they hold a PID; a parent leaking them can exhaust the PID space. The fix is the <em>parent's</em> code (reap children / handle <InlineCode>SIGCHLD</InlineCode>), not <InlineCode>kill -9</InlineCode> on the zombie — you can't kill what's already dead.</>,
+              <><InlineCode>fork()</InlineCode> clones the process, <InlineCode>exec()</InlineCode> replaces its image with a new program — every shell command is fork-then-exec. fork is fast on a 4 GB process because of <strong>copy-on-write</strong>: parent and child share the same physical pages marked read-only, and a page is only duplicated when one side writes it. Failure mode: fork a multi-GB process and the child immediately touches everything (or the parent does) → COW storms, and if RAM is tight the fork itself can fail with <InlineCode>ENOMEM</InlineCode>. This is why a memory-heavy server should <InlineCode>exec</InlineCode> a worker or use <InlineCode>posix_spawn</InlineCode>, not fork-and-compute.</>,
+              <>Linux CFS schedules by <em>virtual runtime</em> — it picks the task with the lowest vruntime from a red-black tree, so CPU time is shared fairly without fixed time slices. <InlineCode>nice</InlineCode> (-20…+19) skews how fast vruntime accrues. Real-time classes <InlineCode>SCHED_FIFO</InlineCode>/<InlineCode>SCHED_RR</InlineCode> always preempt normal tasks — a runaway FIFO thread can lock out everything else, including your shell. Observe scheduling pressure with <InlineCode>vmstat 1</InlineCode> (the <InlineCode>r</InlineCode> column = runnable tasks waiting) or load average.</>,
+              <>Deadlock needs <em>all four</em> Coffman conditions: mutual exclusion, hold-and-wait, no preemption, circular wait. Break any one and you're safe — the cheap, reliable fix is killing circular wait by imposing a <strong>global lock-ordering</strong> (always acquire A before B). Livelock is the nastier cousin: threads aren't blocked, they're busy politely retrying and making no progress.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">Concurrency failure modes worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Data race ≠ "occasionally wrong"</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Two threads touch shared state, at least one writes, no synchronization → <em>undefined behavior</em>. Not "a slightly stale value" — the compiler and CPU are free to reorder and tear the access. It compiling and passing in dev proves nothing; the race shows up under load, on a different core count, in prod.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: a mutex, an atomic, or a channel/queue — pick by access pattern. RW lock for read-heavy, condition variable for "wait until", semaphore for a counted pool. In Go, <InlineCode>go test -race</InlineCode> catches most of these before they ship.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Threads vs processes — when each</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Threads: shared address space, ~µs context switch, one segfault kills the whole process. Processes: isolated, a crash is contained, but IPC (pipe, socket, shared memory) costs a copy or a syscall.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Default to processes for fault isolation (nginx workers, Postgres backends), threads when the work genuinely shares a large hot dataset. "Container = process with extra walls" is the same trade-off one level up — L6 builds on this.
+              </p>
+            </div>
+          </div>
+        </Card>
         <ProcessLifecycle />
         <MermaidDiagram
           chart={`stateDiagram-v2
@@ -81,17 +104,40 @@ export default function Layer2() {
           layerId={L}
           index={2}
           title="Virtual memory, paging, the OOM killer"
-          description="Every process has its own virtual address space. The MMU translates virtual to physical via multi-level page tables, cached in the TLB."
+          description="Every process sees its own flat virtual address space — an illusion the MMU maintains by translating virtual → physical through multi-level page tables, with the TLB caching hot translations. The illusion is what lets the kernel overcommit, share, and lie about memory; the OOM killer is what happens when the lie is called."
         >
           <Bullets
             items={[
-              <>Pages are typically 4 KB. x86-64 has a 4-level page table walk; the TLB caches recent translations.</>,
-              <><InlineCode>brk()</InlineCode> for small allocations (the heap end pointer); <InlineCode>mmap()</InlineCode> for large or file-backed.</>,
-              <>Memory-mapped files power dynamic linking, PostgreSQL shared buffers, and zero-copy IPC.</>,
-              <>OOM killer scores processes by <InlineCode>/proc/PID/oom_score</InlineCode>; tune with <InlineCode>oom_score_adj</InlineCode>.</>,
+              <>Pages are 4 KB; x86-64 walks a 4-level page table per translation, so a TLB miss is expensive. The TLB caches recent virtual→physical mappings — a workload with poor locality (random pointer-chasing over GBs) thrashes the TLB and runs memory-bound even though the data is "in RAM". Huge pages (2 MB) cut the walk depth for databases and JVMs precisely to reduce this.</>,
+              <><InlineCode>brk()</InlineCode>/<InlineCode>sbrk()</InlineCode> moves the heap-end pointer for small allocations; <InlineCode>mmap()</InlineCode> grabs a fresh region for large or file-backed ones (glibc malloc switches to mmap above ~128 KB). Why you care: mmap'd memory returns to the OS on <InlineCode>free</InlineCode>, brk-heap memory often doesn't — it's why a process's RSS stays high after a burst even though the heap is logically empty.</>,
+              <><strong>RSS vs VSZ</strong>: VSZ is everything mapped (including pages never touched), RSS is what's actually resident in RAM. A Go binary showing 1 GB VSZ but 30 MB RSS is normal — the runtime reserves address space it hasn't faulted in. Alert on RSS, not VSZ. Memory-mapped files are the same trick reused: dynamic linking, Postgres shared buffers, and zero-copy IPC all let the page cache <em>be</em> the buffer instead of copying.</>,
+              <>A "successful" write may still sit in the page cache, not on disk — <InlineCode>fsync()</InlineCode> is what forces durability. This is the same dirty-page mechanism the OOM section and L5 (database WAL) both rely on.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">The OOM killer — what actually happens, and how to read it</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">You can die for someone else's leak</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Linux overcommits — <InlineCode>malloc</InlineCode> rarely fails; the reckoning comes when a process <em>touches</em> a page and there's no free frame. The kernel then picks a victim by <InlineCode>oom_score</InlineCode> (roughly: RSS-weighted), kills it, and logs to <InlineCode>dmesg</InlineCode>: <InlineCode>Out of memory: Killed process 1234 (node)</InlineCode>. The victim is "biggest", not "guilty" — your service can be killed for a sidecar's leak.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Triage: <InlineCode>dmesg -T | grep -i oom</InlineCode> for the kill, <InlineCode>journalctl -k</InlineCode> for context. Protect a critical process with <InlineCode>oom_score_adj</InlineCode> (-1000 = never kill); but the real fix is a memory limit so the cgroup OOMs <em>itself</em> instead of the host.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Page fault: minor vs major</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                A <em>minor</em> fault wires up a page already in RAM (COW, first touch of allocated memory) — cheap. A <em>major</em> fault must hit disk: load from a file, or read back something that was swapped out. Major faults are the silent latency killer — a process "using CPU" at 5% can be crawling because it's blocked on major faults.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Watch <InlineCode>vmstat 1</InlineCode> — <InlineCode>si</InlineCode>/<InlineCode>so</InlineCode> (swap in/out) above zero under load means you're swapping and latency is about to fall off a cliff. Per-process: <InlineCode>/proc/PID/stat</InlineCode> fields 10/12 (minflt/majflt). In containers, swap is usually off — so instead of slow, you just get OOM-killed.
+              </p>
+            </div>
+          </div>
+        </Card>
         <VirtualMemoryDemo />
       </Section>
 
@@ -100,14 +146,14 @@ export default function Layer2() {
           layerId={L}
           index={3}
           title="VFS, inodes, links, permissions"
-          description="The Virtual File System unifies ext4, XFS, NTFS, tmpfs, and NFS behind one API. Everything is a file — including devices, processes, and kernel state."
+          description="The Virtual File System unifies ext4, XFS, tmpfs, and NFS behind one API: open/read/write/close. 'Everything is a file' isn't a slogan — it means the same syscalls drive disks, sockets, devices, and kernel state, so the tools you learn here work everywhere."
         >
           <Bullets
             items={[
-              <><InlineCode>/proc</InlineCode> is the kernel exposing process state as files. <InlineCode>/sys</InlineCode> is sysfs (drivers). <InlineCode>/dev</InlineCode> is devtmpfs.</>,
-              <>Hard links share an inode (same content). Symlinks are paths, can dangle, can cross filesystems.</>,
-              <>Permissions: rwx for user/group/other, plus setuid / setgid / sticky bit.</>,
-              <>File descriptors are integers. <InlineCode>0</InlineCode> stdin, <InlineCode>1</InlineCode> stdout, <InlineCode>2</InlineCode> stderr.</>,
+              <>An <strong>inode</strong> is the file — it holds the metadata and block pointers. A directory entry is just a (name → inode) mapping. This is why <InlineCode>rm</InlineCode> is <InlineCode>unlink()</InlineCode>: it removes a name, and the data only dies when the link count <em>and</em> the open-fd count both hit zero. Practical consequence: <InlineCode>rm</InlineCode> a 50 GB log a process still has open and disk stays full — <InlineCode>df</InlineCode> shows it, <InlineCode>du</InlineCode> doesn't. Find the holder with <InlineCode>lsof | grep deleted</InlineCode>; truncate via <InlineCode>/proc/PID/fd</InlineCode> or restart the process.</>,
+              <>Hard link = a second name for the same inode (same data, same filesystem, survives deleting the "original" — there is no original). Symlink = a tiny file containing a path string: can cross filesystems, can dangle if the target moves, and every dereference re-resolves it. Use a symlink for "current → release-2024" deploy swaps; never a hard link across mounts (impossible — inodes are per-filesystem).</>,
+              <>Permissions are <InlineCode>rwx</InlineCode> for user/group/other, but the bits that bite are the specials: <strong>setuid</strong> on an executable runs it as the file's <em>owner</em> (how <InlineCode>passwd</InlineCode> edits root-owned files) — a setuid-root binary with a bug is a privilege-escalation hole. <strong>setgid</strong> on a directory makes new files inherit its group (shared project dirs). <strong>Sticky bit</strong> on <InlineCode>/tmp</InlineCode> stops users deleting each other's files. <InlineCode>chmod 777</InlineCode> "to fix permissions" is almost always the wrong fix and a real one.</>,
+              <>File descriptors are per-process integers indexing the kernel's open-file table: <InlineCode>0</InlineCode> stdin, <InlineCode>1</InlineCode> stdout, <InlineCode>2</InlineCode> stderr. They are <em>not</em> free — every socket, pipe, and open file consumes one against the <InlineCode>ulimit -n</InlineCode> ceiling. "Too many open files" (<InlineCode>EMFILE</InlineCode>) is an fd leak (unclosed connections) or too low a limit — check <InlineCode>ls /proc/PID/fd | wc -l</InlineCode> against <InlineCode>/proc/PID/limits</InlineCode>.</>,
             ]}
           />
         </TopicCard>
@@ -119,8 +165,16 @@ export default function Layer2() {
           layerId={L}
           index={4}
           title="The shell is your power tool"
-          description="Pipelines compose tiny programs into solutions. grep | sort | uniq -c | sort -rn beats most data tools."
+          description="A pipeline composes tiny single-purpose programs into an answer. grep | sort | uniq -c | sort -rn — 'count and rank lines' — beats reaching for a script, and the stages run concurrently, streaming."
         >
+          <Bullets
+            items={[
+              <>A pipe is a kernel buffer; <InlineCode>a | b</InlineCode> runs both processes <em>at once</em> with <InlineCode>a</InlineCode>'s stdout wired to <InlineCode>b</InlineCode>'s stdin. <InlineCode>b</InlineCode> doesn't wait for <InlineCode>a</InlineCode> to finish — it processes the stream as it arrives, and back-pressures (blocks) when its input buffer fills. That's why <InlineCode>tail -f log | grep ERROR</InlineCode> works live and why piping into <InlineCode>head</InlineCode> can stop the upstream early with <InlineCode>SIGPIPE</InlineCode>.</>,
+              <><InlineCode>uniq</InlineCode> only collapses <em>adjacent</em> duplicates — that's the #1 cheat-sheet trap. <InlineCode>sort</InlineCode> before <InlineCode>uniq</InlineCode> always, or it silently undercounts. The canonical "top N by frequency": <InlineCode>sort | uniq -c | sort -rn | head</InlineCode>.</>,
+              <>Redirection order matters: <InlineCode>cmd &gt;file 2&gt;&amp;1</InlineCode> sends both streams to the file, but <InlineCode>cmd 2&gt;&amp;1 &gt;file</InlineCode> sends stderr to the <em>old</em> stdout (terminal) and only stdout to the file — redirections apply left-to-right. <InlineCode>2&gt;&amp;1</InlineCode> means "make fd 2 a copy of wherever fd 1 points <em>now</em>".</>,
+              <>Reach for the right tool: <InlineCode>grep</InlineCode> filters lines, <InlineCode>sed</InlineCode> edits a stream, <InlineCode>awk</InlineCode> handles columns and arithmetic, <InlineCode>jq</InlineCode> for JSON, <InlineCode>xargs</InlineCode> turns a list into arguments. When the pipeline needs variables, branching, or arrays — stop, it's a script (§2.6), and past ~50 lines it's a real program.</>,
+            ]}
+          />
           <CommandCheatSheet />
         </TopicCard>
         <PipelineSimulator />
@@ -131,16 +185,42 @@ export default function Layer2() {
           layerId={L}
           index={5}
           title="Script with safety belts on"
-          description="set -euo pipefail and trap errors. Most production bash bugs come from unset variables and silent pipe failures."
+          description="Bash's defaults are from 1989: it keeps going after an error, expands an unset variable to empty string, and hides failures mid-pipe. A production script's first job is to turn those defaults off — every safety belt maps to a specific real bug."
         >
           <Bullets
             items={[
-              <>Always start scripts with <InlineCode>set -euo pipefail</InlineCode>: exit on error, exit on unset var, catch pipe failures.</>,
-              <>Quote your variables: <InlineCode>"$var"</InlineCode> not <InlineCode>$var</InlineCode> — a space in a path will ruin your day otherwise.</>,
-              <>Use <InlineCode>[[ ... ]]</InlineCode> over <InlineCode>[ ... ]</InlineCode> in bash — fewer surprises with empty strings.</>,
+              <><InlineCode>set -e</InlineCode> — exit on any unhandled non-zero. Without it, <InlineCode>cd /backup && rm -rf *</InlineCode> still runs the <InlineCode>rm</InlineCode> if the <InlineCode>cd</InlineCode> failed — in the wrong directory. <InlineCode>set -u</InlineCode> — error on unset variable. The bug it prevents is the famous <InlineCode>rm -rf "$DIR/$SUBDIR"</InlineCode> where a typo'd <InlineCode>$DIR</InlineCode> expands to nothing and you <InlineCode>rm -rf /</InlineCode>. <InlineCode>set -o pipefail</InlineCode> — a pipeline fails if <em>any</em> stage fails; otherwise <InlineCode>generate_data | gzip &gt; backup.gz</InlineCode> reports success even when <InlineCode>generate_data</InlineCode> crashed and you backed up nothing.</>,
+              <>Quote <em>every</em> expansion: <InlineCode>"$var"</InlineCode>, <InlineCode>"$@"</InlineCode>, <InlineCode>"$(cmd)"</InlineCode>. Unquoted, bash does word-splitting then glob-expansion on the result — a filename with a space becomes two arguments, and a file literally named <InlineCode>*</InlineCode> expands to the directory listing. Unquoted variables are the single largest source of shell bugs.</>,
+              <>Prefer <InlineCode>[[ ... ]]</InlineCode> over <InlineCode>[ ... ]</InlineCode>: <InlineCode>[</InlineCode> is a real command that sees an empty unquoted variable as a missing argument and throws a syntax error; <InlineCode>[[ ]]</InlineCode> is shell syntax that handles it. <InlineCode>[[ ]]</InlineCode> also gives you <InlineCode>&amp;&amp;</InlineCode>, <InlineCode>||</InlineCode>, and <InlineCode>=~</InlineCode> regex matching.</>,
+              <><InlineCode>trap 'cleanup' EXIT</InlineCode> runs your cleanup on success, error, <em>and</em> Ctrl+C — the only reliable way to remove a lockfile or temp dir. And never hardcode <InlineCode>/tmp/myfile</InlineCode>: it's a predictable name two runs (or an attacker) can collide on — use <InlineCode>mktemp</InlineCode>.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">The script that looks fine and isn't</h4>
+          <p className="mb-2 text-[13px] leading-relaxed text-ink-dim">
+            Every line below is a real production incident shape. The header <InlineCode>#!/usr/bin/env bash</InlineCode> + <InlineCode>set -euo pipefail</InlineCode> + quoting turns most of them from "silent data loss" into "loud exit non-zero" — which is exactly what you want in CI, cron, or a container entrypoint.
+          </p>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Silent failures</div>
+              <ul className="mt-1.5 space-y-1.5 text-[13px] leading-relaxed text-ink-dim">
+                <li><InlineCode>cd "$dir"; rm -rf *</InlineCode> — cd fails, rm runs in <InlineCode>$PWD</InlineCode>. Fix: <InlineCode>cd "$dir" || exit 1</InlineCode>, or <InlineCode>set -e</InlineCode>.</li>
+                <li><InlineCode>curl … | tar xz</InlineCode> — curl 404s, tar "succeeds" on empty input. Fix: <InlineCode>pipefail</InlineCode>.</li>
+                <li><InlineCode>VERSION=$(get_version)</InlineCode> then used unquoted — empty on failure, silently breaks the next command.</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Bash vs a real program</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Bash is unbeatable as glue: call commands, wire pipes, check exit codes, move files. It is miserable at arrays of structs, error recovery, concurrency, and arithmetic.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Rule of thumb: once a script needs data structures or careful error handling, or crosses ~50 lines, rewrite it in Go or Python. The cost of "it's just a quick script" is paid later, at 3am.
+              </p>
+            </div>
+          </div>
+        </Card>
         <CodePlayground
           mode="js"
           height={200}
@@ -171,16 +251,40 @@ for (const c of hot) console.log(c.join(' '));
           layerId={L}
           index={6}
           title="Graceful shutdown, strace, systemd units"
-          description="Catching SIGTERM and draining gracefully is the difference between a clean rolling deploy and a 503 storm."
+          description="A signal is the kernel's interrupt mechanism for processes. The one that matters most in production is SIGTERM — handling it correctly is the line between a clean rolling deploy and a 503 storm for every in-flight request."
         >
           <Bullets
             items={[
-              <><InlineCode>SIGTERM</InlineCode> is polite (catchable). <InlineCode>SIGKILL</InlineCode> is the orbital strike — uncatchable, no cleanup.</>,
-              <><InlineCode>strace -p &lt;PID&gt;</InlineCode> shows every syscall a process makes — invaluable for stuck-process triage.</>,
-              <>systemd units declare <InlineCode>[Unit] After=</InlineCode>, <InlineCode>[Service] ExecStart=</InlineCode>, <InlineCode>Restart=on-failure</InlineCode>.</>,
+              <><InlineCode>SIGTERM</InlineCode> (15) = "please stop" — catchable, the default that orchestrators and <InlineCode>kill</InlineCode> send. <InlineCode>SIGINT</InlineCode> (2) = Ctrl+C. <InlineCode>SIGHUP</InlineCode> (1) = terminal closed, conventionally repurposed as "reload config". <InlineCode>SIGKILL</InlineCode> (9) and <InlineCode>SIGSTOP</InlineCode> (19) are the only two the kernel handles itself — uncatchable, no cleanup, no draining. Reaching for <InlineCode>kill -9</InlineCode> first is a smell: you're skipping the cleanup the process wanted to do.</>,
+              <>A signal handler runs <em>asynchronously</em>, interrupting whatever the process was doing — so it must be async-signal-safe: no <InlineCode>malloc</InlineCode>, no locks, no blocking forever. The standard pattern is "handler just sets a flag (or writes a byte to a pipe), the main loop notices and shuts down" — Go's <InlineCode>signal.Notify</InlineCode> into a channel is exactly this, done for you.</>,
+              <><InlineCode>strace -p PID</InlineCode> attaches via <InlineCode>ptrace</InlineCode> and prints every syscall — a process "stuck" is almost always blocked <em>in</em> a syscall, and strace shows which: a <InlineCode>read()</InlineCode> that never returns (dead peer), <InlineCode>futex()</InlineCode> (lock contention), <InlineCode>connect()</InlineCode> (DNS or network hang), <InlineCode>EACCES</InlineCode> on an <InlineCode>open()</InlineCode> (the real cause of a vague "permission denied"). <InlineCode>strace -f -e trace=network</InlineCode> to scope it down.</>,
+              <>A systemd unit is a declarative supervisor: <InlineCode>ExecStart=</InlineCode> the command, <InlineCode>Restart=on-failure</InlineCode> the restart policy, <InlineCode>After=</InlineCode>/<InlineCode>Requires=</InlineCode> ordering and dependencies, <InlineCode>TimeoutStopSec=</InlineCode> the grace period before it escalates SIGTERM → SIGKILL. <InlineCode>journalctl -u svc -f</InlineCode> for live logs, <InlineCode>systemctl status svc</InlineCode> for state + last exit code. It also sandboxes — <InlineCode>MemoryMax=</InlineCode>, <InlineCode>User=</InlineCode>, <InlineCode>ProtectSystem=</InlineCode> — which is where this connects to L6's containers.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">The graceful shutdown sequence — memorize this</h4>
+          <p className="mb-2 text-[13px] leading-relaxed text-ink-dim">
+            On <InlineCode>SIGTERM</InlineCode>, a well-behaved service does, in order: <strong>(1)</strong> stop accepting new work — close the listener / leave the load-balancer pool; <strong>(2)</strong> let in-flight requests finish, up to a deadline; <strong>(3)</strong> close DB connections, flush buffers and logs; <strong>(4)</strong> exit 0. Skip step 1 and you accept requests you can't finish; skip step 2 and you drop the ones already running.
+          </p>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">The grace-period trap</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                systemd and Kubernetes send SIGTERM, wait a fixed grace period (<InlineCode>TimeoutStopSec</InlineCode> / <InlineCode>terminationGracePeriodSeconds</InlineCode>, default ~30s), then SIGKILL. If your drain takes longer than the grace period, you get hard-killed mid-drain anyway — the in-flight work you were carefully finishing is lost. Your drain deadline must be <em>shorter</em> than the grace period.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">PID 1 doesn't get default handlers</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                As PID 1 in a container, your process gets <em>no</em> default signal handlers — if it doesn't explicitly handle SIGTERM, the signal is ignored and <InlineCode>docker stop</InlineCode> always falls through to SIGKILL after 10s. Same trap if your entrypoint is a shell script that <InlineCode>exec</InlineCode>s nothing: the shell gets the signal, not your app. Fix: <InlineCode>exec</InlineCode> the real process, or use a tiny init (<InlineCode>tini</InlineCode>) — and reap zombies, which PID 1 is also responsible for.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            <strong>Reload vs restart:</strong> <InlineCode>SIGHUP</InlineCode> (or <InlineCode>systemctl reload</InlineCode>) re-reads config in the running process — zero downtime, no dropped connections. <InlineCode>restart</InlineCode> is a full stop+start and only as graceful as your SIGTERM handling. Prefer reload when the change allows it.
+          </p>
+        </Card>
         <SignalDemo />
       </Section>
 

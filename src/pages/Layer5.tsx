@@ -19,17 +19,44 @@ export default function Layer5() {
           layerId={L}
           index={0}
           title="REST, GraphQL, gRPC, OpenAPI"
-          description="Choose the protocol that matches the consumer. REST for general HTTP clients; GraphQL when the client needs flexibility; gRPC for service-to-service."
+          description="The protocol isn't a taste choice — it's set by who consumes you and how much you control both ends. The contract is the product: the request shape, the response shape, and every error case."
         >
           <Bullets
             items={[
-              <>REST: resources as nouns, methods as verbs. Plural URLs (<InlineCode>/users/123/orders</InlineCode>). Version with <InlineCode>/v1</InlineCode>.</>,
-              <>GraphQL: schema-first, one endpoint, client picks fields. <InlineCode>DataLoader</InlineCode> batches N+1 queries.</>,
-              <>gRPC: Protobuf, codegen, bidi streaming. Best for internal traffic.</>,
-              <>Pagination: prefer cursor/keyset over offset for stable, scalable feeds.</>,
+              <>REST: resources as plural nouns, HTTP methods carry the verb (<InlineCode>GET/POST/PUT/PATCH/DELETE</InlineCode>) — a path like <InlineCode>/getUser</InlineCode> means you've thrown away the method's semantics. <InlineCode>PUT</InlineCode> and <InlineCode>DELETE</InlineCode> are idempotent, <InlineCode>POST</InlineCode> is not — clients and proxies retry on that assumption. Version in the path (<InlineCode>/v1</InlineCode>) so a breaking change is a new namespace, not a silent client break.</>,
+              <>GraphQL: one endpoint, client picks the fields, so over/under-fetching goes away — but every nested resolver that hits the DB is an N+1 waiting to happen. <InlineCode>{`user → orders → items`}</InlineCode> on 50 users is 1 + 50 + 2500 queries without batching. <InlineCode>DataLoader</InlineCode> coalesces a tick's worth of loads into one <InlineCode>{`IN (...)`}</InlineCode>. A GraphQL API with no DataLoader melts under its own flexibility.</>,
+              <>gRPC: Protobuf contract + codegen + HTTP/2 streaming. Worth it only when you control both ends — the binary wire format and generated stubs are a cost a browser or third party can't pay. Internal service-to-service is the sweet spot.</>,
+              <>Pagination: offset (<InlineCode>LIMIT 20 OFFSET 10000</InlineCode>) makes the DB walk and discard 10k rows — and a row inserted mid-scroll shifts every page, so the user sees a duplicate or skips a row. Cursor/keyset (<InlineCode>WHERE id {'>'} :last_id ORDER BY id LIMIT 20</InlineCode>) is O(1) on an indexed column and stable under concurrent writes. Offset only for small, static, jump-to-page-N admin tables.</>,
+              <>OpenAPI is the machine-readable contract — it generates clients, mocks, and request validation, so the spec and the running code can't drift. Document every error case, not just the 200; an undocumented 422 shape is a client bug you shipped.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">API failure modes worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Non-idempotent retry</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Client <InlineCode>POST /payments</InlineCode>, network drops the response, client retries — now there are two charges. <InlineCode>POST</InlineCode> isn't idempotent, so the retry isn't safe.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: an <InlineCode>Idempotency-Key</InlineCode> header the server stores; a repeat key returns the first result instead of acting again. Every money-moving or email-sending <InlineCode>POST</InlineCode> needs one.
+              </p>
+            </div>
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Offset pagination drift</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                User is on page 2 (<InlineCode>OFFSET 20</InlineCode>). A new row is inserted at the top. Page 3 (<InlineCode>OFFSET 40</InlineCode>) now re-shows the row that slid down from page 2.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Cursor pagination anchors to a value, not a count, so inserts above the cursor don't shift the window. This is why every infinite-scroll feed uses keyset.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            HTTP status semantics (which method is safe/idempotent, what 401 vs 403 vs 422 mean on the wire) are L3's domain — API design is about the resource model and contract <em>on top of</em> that transport.
+          </p>
+        </Card>
         <RestVsGraphql />
       </Section>
 
@@ -38,17 +65,33 @@ export default function Layer5() {
           layerId={L}
           index={1}
           title="Identity vs permission"
-          description="Authentication answers 'who are you?'. Authorization answers 'are you allowed?'. Confusing them is the #1 source of broken access control."
+          description="AuthN answers 'who are you?'. AuthZ answers 'may you do this — to this specific row?'. Every protected route does both, and the second half is where real APIs break."
         >
           <Bullets
             items={[
-              <>Hash passwords with <InlineCode>argon2id</InlineCode> (preferred) or <InlineCode>bcrypt</InlineCode> cost 12+. Never plain MD5/SHA1.</>,
-              <>JWT in <InlineCode>httpOnly + Secure + SameSite</InlineCode> cookies, not localStorage. Watch for the <InlineCode>alg: none</InlineCode> trap.</>,
-              <>OAuth 2.0: Authorization Code + PKCE for SPAs / mobile, Client Credentials for service-to-service.</>,
-              <>Authorization models: RBAC (roles), ABAC (attributes/policy), ReBAC (relationships, e.g. Zanzibar).</>,
+              <>Passwords get a <em>slow</em> hash on purpose: <InlineCode>argon2id</InlineCode> (or <InlineCode>bcrypt</InlineCode> cost 12+) is memory-hard, so an attacker with a stolen DB can't GPU-grind billions of guesses per second. MD5/SHA1 are fast hashes — a fast hash on a password is a leaked password. Per-row salt is built in; it stops one rainbow table from cracking the whole table.</>,
+              <>JWTs can't be revoked before <InlineCode>exp</InlineCode> — the server holds no state to invalidate. So keep <InlineCode>exp</InlineCode> short and pair with a refresh token, or keep a server-side session/denylist and accept the lookup. Store in <InlineCode>httpOnly + Secure + SameSite</InlineCode> cookies: <InlineCode>localStorage</InlineCode> is readable by any XSS payload on the page, and a stolen token is a valid login until it expires.</>,
+              <>Pin the verifying algorithm server-side. <InlineCode>alg: none</InlineCode> tells a naive library to skip signature checks entirely; algorithm confusion feeds an RS256 public key as an HS256 <em>secret</em> so the attacker signs their own tokens. Both are forged-admin-token bugs — never trust the algorithm the token names.</>,
+              <>OAuth 2.0: Authorization Code + PKCE for SPAs/mobile — PKCE binds the code to the client that requested it, so an intercepted code is useless. Client Credentials for service-to-service. The Implicit flow leaked tokens in the URL and is dead; don't use it.</>,
+              <>Authorization model: RBAC (roles) for most apps; ABAC when access depends on attributes (region, time, ownership); ReBAC (Zanzibar-style relationship graph) when it depends on "is X related to Y". Keep the check in <em>one</em> place — middleware or a policy module. Scattered per-handler <InlineCode>if</InlineCode>s are how one handler ends up missing the check.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">The vulnerability worth memorizing: IDOR</h4>
+          <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+            <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Insecure Direct Object Reference</div>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+              The handler for <InlineCode>GET /orders/123</InlineCode> checks the caller is logged in, loads order 123, returns it. The caller is logged in — as user A. Order 123 belongs to user B. The attacker just increments the id: <InlineCode>/orders/124</InlineCode>, <InlineCode>/orders/125</InlineCode>… and reads the whole table.
+            </p>
+            <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+              "Authenticated" was checked; "authorized for <em>this</em> resource" was not. The fix is one clause — <InlineCode>WHERE id = :id AND user_id = :caller</InlineCode> — or an explicit ownership check before returning. This is consistently the #1 real-world API vulnerability, and a 401-vs-403 mindset hides it: the caller has a valid 200-worthy session, the bug is in the row-level check.
+            </p>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            Use UUIDs over sequential ids so resources aren't trivially enumerable — but that's defense in depth, not the fix. The ownership check is the fix; an unguessable id without it just slows the attacker down.
+          </p>
+        </Card>
         <JwtDecoder />
       </Section>
 
@@ -57,17 +100,45 @@ export default function Layer5() {
           layerId={L}
           index={2}
           title="Pick the model that matches your access pattern"
-          description="Postgres handles 95% of workloads. Reach for NoSQL when the access pattern is fixed and scale demands it."
+          description="Postgres is the default — you almost always want transactions, joins, and constraints. Reach for NoSQL for a specific reason: a fixed access pattern, a write volume relational can't take, or genuinely document-shaped data."
         >
           <Bullets
             items={[
-              <>ACID isolation levels: READ COMMITTED → REPEATABLE READ → SERIALIZABLE. Costs go up, anomalies go down.</>,
-              <>EXPLAIN ANALYZE: kill <em>Seq Scan</em>s on large tables; aim for index scans, index-only scans.</>,
-              <>Indexes: B-Tree (default), GIN (jsonb, full-text, arrays), GiST (geo), partial / covering indexes.</>,
-              <>Scale: read replicas, connection pooling (PgBouncer), partitioning, then sharding (Citus, Vitess).</>,
+              <>Know your default isolation level — Postgres is READ COMMITTED, which still allows lost updates across a read-then-write. A balance read in request A and a write in request B interleave and one update vanishes. Fix with a transaction + <InlineCode>SELECT ... FOR UPDATE</InlineCode>, or an optimistic <InlineCode>version</InlineCode> column. SERIALIZABLE removes the anomaly but adds serialization failures you must retry.</>,
+              <>MVCC is why Postgres readers never block writers: an <InlineCode>UPDATE</InlineCode> writes a new row version and leaves the old one as a dead tuple. A long-running transaction holds a snapshot, so <InlineCode>VACUUM</InlineCode> can't reclaim those tuples — the table and its indexes bloat, and scans get slower even though the live row count hasn't changed. One forgotten open transaction can bloat a hot table for hours.</>,
+              <><InlineCode>EXPLAIN ANALYZE</InlineCode> shows the real plan, not the guess. A <em>Seq Scan</em> on a large table in a request path is a bug: <InlineCode>cost=0..21000 rows=1</InlineCode> means it read a million rows to return one. Add the index and it becomes an <em>Index Scan</em>, <InlineCode>cost=0.42..8.43</InlineCode> — O(log n) instead of O(n). A new hot query path gets its index in the <em>same</em> PR.</>,
+              <>Index types match the query: B-Tree for equality and range (the default), GIN for <InlineCode>jsonb</InlineCode>/full-text/array containment, GiST for geo/range overlap. Partial indexes (<InlineCode>WHERE status = 'active'</InlineCode>) stay small; covering indexes (<InlineCode>INCLUDE</InlineCode>) let a query be served index-only with no heap fetch. Indexes aren't free — every one is extra work on every write and more disk.</>,
+              <>Scaling order: index → rewrite the query → connection pooling (PgBouncer — Postgres connections are processes, a few hundred is the practical ceiling) → read replicas (you've now accepted replication lag and stale reads) → partitioning → sharding (Citus, Vitess). Don't shard before you've indexed; most "we need to scale" is a missing index.</>,
+              <>Datastore choice: document (MongoDB) when data is genuinely document-shaped — the shard key is permanent, get it right. Key-value (Redis) for cache, sessions, rate-limit counters, leaderboards — not a source of truth unless you've accepted the durability tradeoff. Wide-column (Cassandra/Dynamo) for massive write throughput with known query patterns, modeling a table per query.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">Two database failure modes worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The N+1 query</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Load 50 orders, then loop and fetch each order's user: 1 + 50 round trips. Each is fast in isolation, so it passes review and looks fine on a 10-row dev DB — then the list page times out in production.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: one <InlineCode>{`JOIN`}</InlineCode>, or batch the ids into a single <InlineCode>{`WHERE user_id IN (...)`}</InlineCode>. The same shape as the GraphQL DataLoader problem in 5.1. Catch it with a test that asserts query count, not just correctness.
+              </p>
+            </div>
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">The simultaneous-deploy migration</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                A PR renames a column and updates the code in one shot. During rollout, old pods query the old name and new pods the new name — half your traffic 500s until the deploy finishes.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Migrations are additive and backwards-compatible: add nullable column → write both → backfill in batches (never one giant <InlineCode>UPDATE</InlineCode> — it locks the table and bloats it) → read new → drop old. Each step is safe to run while the previous version is still live.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            Rule of thumb: normalize until it hurts, denormalize until it works. 3NF by default; denormalize deliberately for a <em>measured</em> read-heavy path, and own the consistency cost — a copied value is a value that can go stale.
+          </p>
+        </Card>
         <IndexDemo />
         <MermaidDiagram
           chart={`erDiagram
@@ -107,17 +178,46 @@ export default function Layer5() {
           layerId={L}
           index={3}
           title="Cache-aside, write-through, write-behind"
-          description="Caches trade staleness for speed. Pick the strategy that matches your consistency requirement."
+          description="Caches trade staleness for speed. The strategy you pick decides which failure mode you own — a stale read, a slow write, or a lost write."
         >
           <Bullets
             items={[
-              <>Cache-aside (lazy): app reads cache → on miss, fetches from DB and stores. Simple, but cold-start spikes.</>,
-              <>Write-through: writes go to both. Consistent, slower writes.</>,
-              <>Write-behind: writes go to cache, async to DB. Fast, risky on cache failure.</>,
-              <>Always set a TTL. Stampede protection: lock on first miss, or refresh-ahead.</>,
+              <>Cache-aside (lazy): read checks cache → miss → load DB → populate. Writes hit the DB and <em>delete</em> the key (don't update it — a concurrent reader can repopulate stale and win the race). Failure mode: cold start, every key missing at once.</>,
+              <>Write-through: write cache + DB in the same path. Cache is never stale, but you pay the DB write latency on every write and still cache data nobody reads.</>,
+              <>Write-behind: write cache, ack, flush to DB async. Lowest write latency — but the unflushed buffer is <strong>real data that only exists in Redis</strong>. Crash before flush = silent loss. Only acceptable when the write is reconstructable or loss-tolerant (view counts, not orders).</>,
+              <>Every key needs a TTL <em>and</em> jitter (<InlineCode>ttl + rand(0, ttl/4)</InlineCode>). Identical TTLs set during a deploy all expire in the same second → synchronized stampede on the DB.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">The two failure modes worth memorizing</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Cache stampede (dogpile)</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                A hot key expires. The next <em>N</em> concurrent requests all miss, all run the same expensive query, all write the same value back. One slow query becomes <em>N</em> slow queries — the DB can fall over from a <em>cache</em> event.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Fix: a per-key lock (<InlineCode>SET key _ NX EX 10</InlineCode>) so only the winner recomputes and the rest wait or serve stale. Or refresh-ahead — a background job re-warms the key <em>before</em> the TTL hits, so it never actually expires under load.
+              </p>
+            </div>
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Dual-write inconsistency</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Cache and DB are two systems with no shared transaction. Write DB then update cache: crash between them = stale cache forever. Update cache then DB: a concurrent reader can write the <em>old</em> DB value over your fresh cache entry.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Why cache-aside <em>deletes</em> instead of updates: a delete is idempotent and self-healing — worst case the next read just re-fetches. This is the same shape as the L5.5 dual-write problem the outbox pattern solves.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-dim">
+            <strong>Negative caching:</strong> cache the <em>absence</em> of a row too (a short-TTL tombstone). Without it, every request for a non-existent id — common in credential-stuffing or scraping — is a guaranteed cache miss that always hits the DB. The cache only protects you on the happy path otherwise.
+          </p>
+          <p className="mt-2 text-[13px] leading-relaxed text-ink-faint">
+            Default to cache-aside + short TTL + jitter. Reach for write-through only when a stale read is unacceptable; reach for write-behind only when the write is cheap to lose. As the standards put it: prefer short TTLs over clever invalidation you'll get wrong.
+          </p>
+        </Card>
         <CacheAnimator />
       </Section>
 
@@ -126,17 +226,38 @@ export default function Layer5() {
           layerId={L}
           index={4}
           title="Decouple producers from consumers"
-          description="Messaging absorbs traffic spikes, enables fan-out, and lets services evolve independently — at the cost of eventual consistency."
+          description="Reach for a queue to decouple producer from consumer, absorb a traffic spike, or fan out — not to replace a call that should just be a synchronous function. Crossing the boundary async means you've signed up for eventual consistency."
         >
           <Bullets
             items={[
-              <>RabbitMQ: exchanges (direct, topic, fanout) → queues → consumers. ACKs and DLX for retries.</>,
-              <>Kafka: append-only log, partitions = parallelism, consumer groups split work.</>,
-              <>At-least-once is the default. Idempotent consumers + dedup key gets you exactly-once semantics.</>,
-              <>Outbox pattern: write event to DB in same txn as data, publish from a separate worker.</>,
+              <>RabbitMQ is a broker: exchanges (direct/topic/fanout) route to queues, a consumer ACKs to remove a message, a nack or timeout requeues it, and a dead-letter exchange catches what keeps failing so one poison message doesn't loop forever. The message is gone once ACKed — it's a work queue, not a log. Best for task distribution and routing.</>,
+              <>Kafka is an append-only log: messages stay for a retention window, so a consumer group tracks its own <em>offset</em> and can replay from any point. Partitions are the unit of parallelism — one partition is consumed by exactly one consumer in a group, so more consumers than partitions just idle. Best for event sourcing, replay, and multiple independent consumer groups off the same stream.</>,
+              <>Same key → same partition (hash of key mod partition count), which is the <em>only</em> ordering guarantee Kafka gives you — per key, per partition. Across partitions there is no global order. Choose the key for the ordering you actually need (e.g. <InlineCode>user_id</InlineCode> so one user's events stay in sequence).</>,
+              <>Delivery is at-least-once by default: the broker redelivers if the ACK is lost, so a consumer <em>will</em> see duplicates. A non-idempotent consumer that "send email on OrderPlaced" sends the email twice. Exactly-once is a property you build — a dedup table keyed by message/event id, or an idempotency key checked before the side effect — not a checkbox you tick.</>,
+              <>Outbox pattern: publishing to the broker and writing to your DB are two systems with no shared transaction — crash between them and the event is lost or sent without the data. Instead write the event to an <InlineCode>outbox</InlineCode> table in the <em>same</em> transaction as the business row; a separate relay polls the table and publishes. One atomic commit, then at-least-once delivery downstream.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">RabbitMQ vs Kafka — when each</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-orange-400/30 bg-orange-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-orange-300">RabbitMQ — work queue</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                A job needs to be done once by one worker: resize an image, send a webhook, charge a card. Message is consumed and gone. Rich routing, per-message ACK, easy competing-consumers scaling.
+              </p>
+            </div>
+            <div className="rounded-xl border border-violet-400/30 bg-violet-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-violet-300">Kafka — event log</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                An event many systems care about and may need to re-process: <InlineCode>OrderPlaced</InlineCode> feeds billing, analytics, and search, each as its own consumer group reading the same retained log at its own offset.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            The duplicate-processing bug is the one to internalize: at-least-once means "design every consumer to survive seeing the same message twice." It's the exact shape of the dual-write problem in 5.4 — the outbox is to events what cache-aside's delete is to cache entries: make the unsafe step self-healing.
+          </p>
+        </Card>
         <KafkaDemo />
       </Section>
 
@@ -145,17 +266,33 @@ export default function Layer5() {
           layerId={L}
           index={5}
           title="Start with a monolith"
-          description="Microservices solve organizational problems, not technical ones. Premature splitting trades local function calls for distributed systems pain."
+          description="Splitting a service turns a local function call — synchronous, transactional, type-checked at compile time — into a network call: it can be slow, fail partially, or arrive twice. Split only at a real bounded-context seam with an independent scaling or deploy need."
         >
           <Bullets
             items={[
-              <>Domain-Driven Design: bounded contexts → services. Don't split by technical layer.</>,
-              <>Sync (REST/gRPC) for query-style traffic; async (events) for workflows that don't need an immediate answer.</>,
-              <>Circuit breaker, retry with jitter, bulkhead, timeout — every cross-service call needs them.</>,
-              <>Saga: distributed transaction via local transactions + compensating actions. Choreography or orchestration.</>,
+              <>Split by bounded context (DDD), never by technical layer. A "database service" + "API service" + "logic service" gives you all the network failure of microservices and none of the independent-deploy benefit — every feature still touches all three. A real seam is a domain that owns its data and can deploy and scale alone.</>,
+              <>Sync (REST/gRPC) when the caller needs the answer to continue — a price lookup. Async (events) when it doesn't — "order placed" can let billing and email catch up later. Picking sync for a workflow couples two services' uptime: if billing is down, checkout is down. Picking async for a query forces the caller to poll or block.</>,
+              <>Every cross-service call needs a <em>timeout</em> (an unbounded wait is how one slow service hangs every caller), a <em>retry with jitter</em> (a fixed retry interval synchronizes every client into a thundering herd the instant the service recovers), a <em>circuit breaker</em> (stop calling a service that's clearly down so it can recover instead of being hammered), and a <em>bulkhead</em> (isolate the thread/connection pool per dependency so one slow dependency can't exhaust the whole pool).</>,
+              <>There's no distributed transaction across services — no shared <InlineCode>COMMIT</InlineCode>. A Saga is a sequence of local transactions, each emitting an event for the next; if step 3 fails, you run <em>compensating</em> actions to undo steps 1–2. Orchestration: one coordinator drives the steps (easier to see and debug). Choreography: services react to each other's events (looser coupling, but the flow is implicit and hard to trace).</>,
+              <>The cost you sign up for: partial failure is now normal, every state change is eventually consistent, and a single request fans out across services — so you need a correlation id propagated through every call and structured logs, or a production bug is unobservable.</>,
             ]}
           />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">The failure mode worth memorizing: the distributed monolith</h4>
+          <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+            <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Microservices with monolith coupling</div>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+              The team split too early, on the wrong seams. Now every feature change touches three services that must deploy together, they share a database so a schema change breaks all of them, and a request hops synchronously through all three so any one being down takes the whole flow down.
+            </p>
+            <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+              You've paid the full distributed-systems tax — network failure, partial failure, eventual consistency, distributed tracing — and kept the coupling of a monolith. It's strictly worse than the monolith you started with: the same lockstep deploys, plus the network in between.
+            </p>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            This is why "start with a monolith" isn't conservatism — extracting a service from a clean modular monolith is straightforward; merging mis-drawn services back is a rewrite. CAP and system design at planet scale are L7's job; L5 is the boundary decision: is this a real seam, or a function call you're about to put a network inside?
+          </p>
+        </Card>
         <CodePlayground
           mode="js"
           height={220}

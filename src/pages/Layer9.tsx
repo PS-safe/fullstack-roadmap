@@ -31,13 +31,14 @@ export default function Layer9() {
           layerId={L}
           index={1}
           title="The pragmatic three"
-          description="Don't Repeat Yourself, Keep It Simple, You Aren't Gonna Need It. The most useful guidance is also the most ignored."
+          description="Don't Repeat Yourself, Keep It Simple, You Aren't Gonna Need It. All three lose to over-engineering far more often than to under-engineering — the default failure mode of a learning engineer is too much structure, not too little."
         >
           <Bullets
             items={[
-              <><strong className="text-ink">DRY</strong>: extract a concept, not a coincidence. Two pieces of code that look similar but evolve separately are <em>not</em> duplicates.</>,
-              <><strong className="text-ink">KISS</strong>: optimize for the next person reading this code at 2am. Clever code is a debt.</>,
-              <><strong className="text-ink">YAGNI</strong>: don't build for hypothetical future requirements. Add the abstraction <em>when</em> the third use case shows up.</>,
+              <><strong className="text-ink">DRY is about knowledge, not characters.</strong> Extract when two pieces share a <em>reason to change</em> — one concept, one stakeholder. Two functions that look identical today but answer to different stakeholders (a tax rule and a discount rule that both happen to be <InlineCode>x * 0.9</InlineCode>) will diverge; sharing them couples unrelated features so one team's change breaks the other's. The smell of false DRY is a shared helper with a <InlineCode>kind</InlineCode> flag and growing branches inside it.</>,
+              <><strong className="text-ink">KISS — clever is a debt that compounds.</strong> Optimize for the person debugging this at 2am, who is often you. The cost isn't writing the clever version, it's that every future reader pays the re-derivation tax. A dumb explicit <InlineCode>switch</InlineCode> beats a one-line lookup nobody can modify safely.</>,
+              <><strong className="text-ink">YAGNI — build for the requirement in front of you.</strong> Add the parameter, hook, or layer <em>when</em> the case actually arrives, not when you imagine it. The cost of waiting is one refactor later; the cost of speculating is carrying — and testing, and explaining — flexibility nobody uses, often shaped wrong because you guessed before you knew.</>,
+              <><strong className="text-ink">The tension: DRY pushes toward abstraction, YAGNI pushes against it.</strong> The tiebreaker is the rule of three — duplication is cheaper than the wrong abstraction. Wait for the third instance <em>and</em> a confirmed shared intent before extracting. "Duplication is far cheaper than the wrong abstraction" (Sandi Metz) is the load-bearing sentence here.</>,
               <>Related: separation of concerns, composition over inheritance, principle of least astonishment.</>,
             ]}
           />
@@ -50,10 +51,30 @@ export default function Layer9() {
           layerId={L}
           index={2}
           title="Where you draw the lines"
-          description="All four are about isolating business logic from delivery and persistence. Pick the one that fits your team's vocabulary; the rules are nearly identical."
+          description="All four isolate business logic from delivery and persistence, and the dependency rule is identical — arrows point inward, toward the domain. They differ in vocabulary and diagram shape, not substance. The one decision that actually does the work is DIP: the domain depends on an interface, the DB adapter implements it. Everything else is bookkeeping on top of that."
         >
           <ArchitectureSwitcher />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">When each — and when none</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Layered, or no architecture</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Small app or a CRUD service with a thin rules layer → plain layered, or honestly just a controller and an ORM. The classic layered trap: "each layer depends on the one below" quietly lets the domain import the data layer, so you can't test the domain without a database. If you go layered, still point that one arrow inward.
+              </p>
+            </div>
+            <div className="rounded-xl border border-indigo-400/30 bg-indigo-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-indigo-300">Hexagonal / Clean / Onion</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Real domain logic worth protecting <em>and</em> a concrete need to swap or fake I/O (test without the DB, support a second persistence target, mock an external API). The payoff is a domain test suite that runs in milliseconds with no infrastructure. The tax is more files and more indirection — it needs team buy-in, and on a 200-line CRUD app it's pure overhead.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            Hexagonal, Clean, and Onion are the <em>same architecture</em> drawn three ways — ports/adapters, concentric circles, rings. Pick the vocabulary your team already speaks; don't adopt Clean because Netflix did. The honest cost question: are you writing more interfaces than you have implementations? Then you've bought flexibility nobody's using yet.
+          </p>
+        </Card>
         <MermaidDiagram
           chart={`flowchart TB
             subgraph delivery [Delivery / Adapters]
@@ -100,10 +121,22 @@ export default function Layer9() {
           layerId={L}
           index={3}
           title="The UI architecture family"
-          description="Three takes on splitting UI from logic from data. They're often misunderstood — same words, different communities mean different things."
+          description="Three takes on splitting UI from logic from data — all aiming at a testable view layer, differing in who pushes state to the view. Be precise about which you mean: 'MVC' in Rails, in iOS, and in a 2005 Java book are three different diagrams, and most arguments about them are people using the same word for different things. The deciding question: does your UI framework give you data-binding?"
         >
           <MvcCompare />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">When each — picked by one question</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            <strong className="text-ink">Server-rendered, no binding</strong> → <strong>MVC</strong>. Request comes in, controller mutates the model, picks a view, view renders once. Rails, Django, Laravel. The model and view can drift because the round-trip resets everything.
+          </p>
+          <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+            <strong className="text-ink">You need the view fully unit-testable with no UI framework loaded</strong> → <strong>MVP</strong>. The view is "humble" — it has no logic, the presenter sets every value explicitly. You test the presenter against a fake view interface. The cost is verbosity: every field is a manual <InlineCode>view.setX(...)</InlineCode> call.
+          </p>
+          <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+            <strong className="text-ink">Your framework has declarative data-binding</strong> → <strong>MVVM</strong>. The view-model exposes observable state, the view binds to it, changes propagate automatically — Vue, Angular, WPF. React isn't classic MVVM (no two-way binding), but a component plus its hooks is the same shape: hooks are the view-model, JSX is the view. Picking MVP or MVVM by taste rather than by "do I have binding" is how you end up fighting the framework.
+          </p>
+        </Card>
       </Section>
 
       <Section id="ddd" kicker="9.5" title="Domain-Driven Design">
@@ -111,19 +144,40 @@ export default function Layer9() {
           layerId={L}
           index={4}
           title="Bounded contexts, aggregates, ubiquitous language"
-          description="DDD's strategic patterns (boundaries, contexts) matter more than the tactical ones (entities, value objects). Get the boundaries right and the rest falls out."
+          description="DDD's strategic patterns (boundaries, contexts) matter more than the tactical ones (entities, value objects). Get the boundaries wrong and the tactical patterns just decorate a confused model — entities and value objects on top of bad boundaries are still bad design."
         >
           <Bullets
             items={[
-              <><strong className="text-ink">Bounded context</strong>: one model, one team, one ubiquitous language. <InlineCode>Order</InlineCode> in Sales ≠ <InlineCode>Order</InlineCode> in Shipping.</>,
-              <><strong className="text-ink">Aggregate</strong>: a cluster of entities with one root. The root is the only entry point and enforces invariants.</>,
-              <><strong className="text-ink">Value object</strong>: identity-less, immutable. <InlineCode>Money</InlineCode>, <InlineCode>Address</InlineCode>, <InlineCode>DateRange</InlineCode>.</>,
-              <><strong className="text-ink">Domain event</strong>: something that happened (past tense): <InlineCode>OrderShipped</InlineCode>, <InlineCode>PaymentFailed</InlineCode>.</>,
-              <><strong className="text-ink">Anti-corruption layer</strong>: a translator between bounded contexts so each keeps its own language.</>,
+              <><strong className="text-ink">Bounded context — the unit that actually matters.</strong> One model, one team, one ubiquitous language. <InlineCode>Customer</InlineCode> in Sales (cart, payment method, lifetime value) and <InlineCode>Customer</InlineCode> in Shipping (name, address, delivery instructions) are <em>different objects that share an id</em> — and that is correct, not a bug to unify. Forcing one shared <InlineCode>Customer</InlineCode> class produces a god object every team has to touch and nobody fully understands.</>,
+              <><strong className="text-ink">Ubiquitous language is enforced, not aspirational.</strong> The words in the code are the words the domain expert uses — if they say "policy" and the code says "record", every conversation needs a translation step and bugs hide in the gap. The payoff: a domain expert can read a method name and tell you it's wrong.</>,
+              <><strong className="text-ink">Aggregate — a consistency boundary, keep it small.</strong> A cluster of entities with one root; the root is the only entry point and enforces invariants in <em>one</em> transaction. The failure mode is the greedy aggregate: pull <InlineCode>Order</InlineCode> + every <InlineCode>LineItem</InlineCode> + <InlineCode>Customer</InlineCode> + <InlineCode>Inventory</InlineCode> under one root and every concurrent order update now contends on the same lock and loads half the database. Reference other aggregates by id, not by object.</>,
+              <><strong className="text-ink">Value object</strong>: identity-less, immutable, compared by value. <InlineCode>Money</InlineCode>, <InlineCode>Address</InlineCode>, <InlineCode>DateRange</InlineCode>. Modelling these as plain primitives is where the validation-everywhere smell comes from — make <InlineCode>Money</InlineCode> a type and "can't add USD to EUR" becomes a compile error, not a runtime check copy-pasted in twelve places.</>,
+              <><strong className="text-ink">Domain event</strong>: something that happened, past tense — <InlineCode>OrderShipped</InlineCode>, <InlineCode>PaymentFailed</InlineCode>. It's how one aggregate tells another the world changed without a direct call (this is the seam L7's event-driven and CQRS designs build on).</>,
+              <><strong className="text-ink">Anti-corruption layer (ACL)</strong>: a translator at a context boundary so each side keeps its own language. When you integrate a legacy system or a third-party API, the ACL stops their model from leaking into yours — without it, their <InlineCode>Customer</InlineCode> shape slowly infects your domain and you've lost the boundary.</>,
             ]}
           />
         </TopicCard>
         <BoundedContextMap />
+        <Card>
+          <h4 className="mb-3 font-semibold">When DDD is the wrong call</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">No domain worth protecting</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                If the app is CRUD with a thin rules layer — a form saves a row, a list reads rows — DDD's aggregates, repositories, and domain events are pure ceremony. You get five files and three indirections for what a controller and an ORM call would do. DDD earns its cost only where the business logic itself is hard: pricing, scheduling, eligibility, settlement.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Tactical without strategic</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                The common failure: a team reads the blue book, adds <InlineCode>Entity</InlineCode> base classes and <InlineCode>ValueObject</InlineCode> wrappers and a <InlineCode>Repository</InlineCode> per table — but never draws the context boundaries. Result is the same big shared model as before, now with more boilerplate. The boundaries are the value; the building blocks are bookkeeping.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            Rule of thumb: do the strategic work (context map, ubiquitous language) on any non-trivial system — it's just talking to domain experts and drawing boxes. Reach for the tactical patterns only inside a context whose logic is genuinely complex.
+          </p>
+        </Card>
       </Section>
 
       <Section id="frontend" kicker="9.6" title="Frontend Architecture & Micro-Frontends">
@@ -131,14 +185,14 @@ export default function Layer9() {
           layerId={L}
           index={5}
           title="Component-driven, BFF, micro-frontends"
-          description="Atomic Design organizes UI; BFF gives each frontend its own API; micro-frontends let independent teams ship to one app shell."
+          description="The same dependency-and-boundary thinking, applied to the frontend. Each of these is a tool with a real tax — the judgment is matching the tool to a problem you actually have, not adopting it because a bigger company did."
         >
           <Bullets
             items={[
-              <><strong className="text-ink">Atomic Design</strong>: atoms → molecules → organisms → templates → pages.</>,
-              <><strong className="text-ink">BFF (Backend-for-Frontend)</strong>: a thin server that aggregates and shapes data for one client (web, iOS, Android).</>,
-              <><strong className="text-ink">Micro-frontends</strong>: split by domain (Checkout team owns /checkout). Stitch via iframes, web components, or Module Federation.</>,
-              <><strong className="text-ink">Container vs presentational</strong>: still useful — separate "where data comes from" from "how it looks".</>,
+              <><strong className="text-ink">Atomic Design</strong>: atoms → molecules → organisms → templates → pages — a shared vocabulary for a component library, not a law. Its value is letting a team say "that's an organism" and agree on scope. The failure mode is treating the taxonomy as the goal: agonizing over whether a search field is a molecule or an organism is wasted time. Use it to communicate, don't litigate it.</>,
+              <><strong className="text-ink">Container vs presentational</strong>: separate "where data comes from" from "how it looks". Hooks blurred the mechanical split (you no longer need a wrapper component), but the <em>principle</em> holds — a component that both fetches and renders is hard to test and hard to reuse. Keep data-access in a hook or a parent, keep the leaf component a pure function of props. This is L4 craft; here it's the same boundary rule, scoped to one component.</>,
+              <><strong className="text-ink">BFF (Backend-for-Frontend)</strong>: a thin per-client server that aggregates and shapes data — web, iOS, and Android have genuinely different field and round-trip needs. The problem it solves is the lowest-common-denominator API: one shared endpoint that over-fetches for mobile and under-fetches for web because it serves both. Behind the BFFs the same microservices serve everyone. Cost: one more deployable per client to own. Skip it when you have one client, or when GraphQL already lets each client ask for its own shape.</>,
+              <><strong className="text-ink">Micro-frontends</strong>: split the app by domain so independent teams ship to one shell (iframes, web components, Module Federation). It's an <em>org-scaling</em> tool — it trades a heavy technical tax (shared-dependency hell, duplicated bundle weight, cross-app styling and auth, integration testing across repos) for the ability of many teams to deploy without coordinating. <strong>When NOT to:</strong> one team, or a few. With fewer than ~3 teams that genuinely need independent release cadences, you've bought all the tax and none of the benefit — a well-structured modular monolith with feature folders gives you the boundaries without the distribution cost. Reaching for micro-frontends without the org problem is cargo cult.</>,
             ]}
           />
         </TopicCard>
@@ -151,10 +205,33 @@ export default function Layer9() {
           layerId={L}
           index={6}
           title="Vocabulary, not gospel"
-          description="Knowing pattern names lets you communicate quickly. Knowing when *not* to apply them is more important."
+          description="A pattern is a communication shortcut — saying 'Strategy' compresses a paragraph into a word. But every pattern is also a layer of indirection, and indirection you don't need is just cost. Reach for a pattern when you feel the pain it solves; reaching first is how you get FactoryBuilderProviderManagerImpl."
         >
           <PatternLibrary />
         </TopicCard>
+        <Card>
+          <h4 className="mb-3 font-semibold">When NOT to reach for the pattern</h4>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The pattern is a generalization of a case you have once</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Strategy with one strategy, Factory that always returns the same class, Observer with one fixed subscriber — that's an interface and an indirection wrapping a hard-coded call. The pattern earns its keep only at the <em>second</em> real variant. Until then it's speculative generality: YAGNI at the pattern scale.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
+                Test: can you name the second concrete case today? If not, write the direct code and extract the pattern when the case shows up — the refactor is cheap, the wrong abstraction is not.
+              </p>
+            </div>
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
+              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">The language already has it</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+                Half the GoF catalog exists to work around 1994 Java. In JS/TS a Strategy is usually just a function passed as an argument; Command is a closure; Iterator is the iterator protocol; Observer is an <InlineCode>EventEmitter</InlineCode> or a signal. Singleton is almost always a hidden global — a module-scoped value with no DI seam, untestable and order-dependent. Naming the GoF class for something the language gives you for free adds ceremony, not clarity.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
+            Patterns are descriptive — names for structures that recur — not prescriptive. The skill is recognizing one after the pain appears, not installing it in advance. A codebase named after its patterns (<InlineCode>AbstractProviderFactoryBean</InlineCode>) is a codebase that confused the vocabulary for the design.
+          </p>
+        </Card>
         <CodePlayground
           mode="js"
           height={240}
