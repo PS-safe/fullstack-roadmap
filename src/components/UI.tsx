@@ -197,6 +197,48 @@ export function DeepDive({
 }
 
 /**
+ * Side-by-side comparison — 2-4 toned columns, each carrying the FULL
+ * explanation of one option. The visual is the layout; no text is trimmed.
+ */
+export function Compare({
+  items,
+}: {
+  items: { label: string; body: ReactNode; tone?: 'a' | 'b' | 'c' | 'warn' | 'fail' }[];
+}) {
+  const box: Record<string, string> = {
+    a: 'border-cyan-400/30 bg-cyan-400/5',
+    b: 'border-violet-400/30 bg-violet-400/5',
+    c: 'border-emerald-400/30 bg-emerald-400/5',
+    warn: 'border-amber-400/30 bg-amber-400/5',
+    fail: 'border-rose-400/30 bg-rose-400/5',
+  };
+  const label: Record<string, string> = {
+    a: 'text-cyan-300',
+    b: 'text-violet-300',
+    c: 'text-emerald-300',
+    warn: 'text-amber-300',
+    fail: 'text-rose-300',
+  };
+  return (
+    <div className={cn('grid grid-cols-1 gap-3', items.length >= 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
+      {items.map((it, i) => (
+        <motion.div
+          key={i}
+          initial={{ opacity: 0, y: 8 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ delay: i * 0.08, duration: 0.3 }}
+          className={cn('rounded-xl border p-3.5', box[it.tone ?? 'a'])}
+        >
+          <div className={cn('text-xs font-semibold uppercase tracking-widest', label[it.tone ?? 'a'])}>{it.label}</div>
+          <div className="mt-2 text-[13px] leading-relaxed text-ink-dim">{it.body}</div>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Animated step sequence — a visual narrative of how something works or fails.
  * Steps fade in left-to-right on scroll; mark the breaking step `fail`, the
  * good outcome `ok`. Replaces a wall of prose with a glanceable flow.

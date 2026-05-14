@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Server, KeyRound, Inbox, RotateCcw } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat, Steps } from '../components/UI';
+import { Section, TopicCard, InlineCode, Card, Stat, Steps, Compare } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { MermaidDiagram } from '../components/MermaidDiagram';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
@@ -22,6 +22,82 @@ export default function Layer5() {
           description="The protocol isn't a taste choice — it's set by who consumes you and how much you control both ends. The contract is the product: the request shape, the response shape, and every error case."
         />
         <RestVsGraphql />
+        <Compare
+          items={[
+            {
+              label: 'REST',
+              tone: 'a',
+              body: (
+                <>
+                  Resources as plural nouns, HTTP methods carry the verb (<InlineCode>GET/POST/PUT/PATCH/DELETE</InlineCode>) — a path
+                  like <InlineCode>/getUser</InlineCode> means you've thrown away the method's semantics. <InlineCode>PUT</InlineCode> and{' '}
+                  <InlineCode>DELETE</InlineCode> are idempotent, <InlineCode>POST</InlineCode> is not — clients and proxies retry on
+                  that assumption. Version in the path (<InlineCode>/v1</InlineCode>) so a breaking change is a new namespace, not a
+                  silent client break.
+                </>
+              ),
+            },
+            {
+              label: 'GraphQL',
+              tone: 'b',
+              body: (
+                <>
+                  One endpoint, client picks the fields, so over/under-fetching goes away — but every nested resolver that hits the DB
+                  is an N+1 waiting to happen. <InlineCode>{`user → orders → items`}</InlineCode> on 50 users is 1 + 50 + 2500 queries
+                  without batching. <InlineCode>DataLoader</InlineCode> coalesces a tick's worth of loads into one{' '}
+                  <InlineCode>{`IN (...)`}</InlineCode>. A GraphQL API with no DataLoader melts under its own flexibility.
+                </>
+              ),
+            },
+            {
+              label: 'gRPC',
+              tone: 'c',
+              body: (
+                <>
+                  Protobuf contract + codegen + HTTP/2 streaming. Worth it only when you control both ends — the binary wire format and
+                  generated stubs are a cost a browser or third party can't pay. Internal service-to-service is the sweet spot.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'Offset pagination',
+              tone: 'fail',
+              body: (
+                <>
+                  <InlineCode>LIMIT 20 OFFSET 10000</InlineCode> makes the DB walk and discard 10k rows — and a row inserted mid-scroll
+                  shifts every page, so the user sees a duplicate or skips a row. Offset only for small, static, jump-to-page-N admin
+                  tables.
+                </>
+              ),
+            },
+            {
+              label: 'Cursor / keyset',
+              tone: 'c',
+              body: (
+                <>
+                  <InlineCode>WHERE id {'>'} :last_id ORDER BY id LIMIT 20</InlineCode> is O(1) on an indexed column and stable under
+                  concurrent writes — inserts above the cursor don't shift the window. This is why every infinite-scroll feed uses
+                  keyset.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">OpenAPI — the machine-readable contract</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            OpenAPI generates clients, mocks, and request validation, so the spec and the running code can't drift. Document every
+            error case, not just the 200; an undocumented 422 shape is a client bug you shipped.{' '}
+            <span className="text-ink-faint">
+              (HTTP status semantics — which method is safe/idempotent, what 401 vs 403 vs 422 mean on the wire — are L3's domain; API
+              design is the resource model and contract on top of that transport.)
+            </span>
+          </p>
+        </Card>
         <Steps
           steps={[
             { label: 'POST /payments' },
@@ -46,22 +122,11 @@ export default function Layer5() {
           ]}
           caption={
             <>
-              Offset counts rows; cursor/keyset anchors to a value, so inserts above the cursor don't shift the window — why every
-              infinite-scroll feed uses keyset. (HTTP status semantics — safe/idempotent, 401 vs 403 — are L3's domain.)
+              The animated failure behind the comparison above: offset counts rows, so an insert above the window re-shows a row —
+              cursor anchors to a value and stays stable.
             </>
           }
         />
-        <Card>
-          <Bullets
-            items={[
-              <>REST: resources as plural nouns, HTTP methods carry the verb; <InlineCode>PUT</InlineCode>/<InlineCode>DELETE</InlineCode> idempotent, <InlineCode>POST</InlineCode> not; version in the path.</>,
-              <>GraphQL: client picks the fields — but every nested resolver is an N+1; needs <InlineCode>DataLoader</InlineCode> batching.</>,
-              <>gRPC: Protobuf + codegen + HTTP/2 streaming — worth it only internal, service-to-service.</>,
-              <>Pagination: cursor/keyset (O(1), stable under writes), not offset, for anything that scrolls.</>,
-              <>OpenAPI: the machine-readable contract — generates clients, mocks, validation; document every error case.</>,
-            ]}
-          />
-        </Card>
       </Section>
 
       <Section id="auth" kicker="5.2" title="Authentication & Authorization">
@@ -89,16 +154,75 @@ export default function Layer5() {
           }
         />
         <Card>
-          <Bullets
-            items={[
-              <>Passwords: a <em>slow</em>, memory-hard hash (<InlineCode>argon2id</InlineCode> or <InlineCode>bcrypt</InlineCode> 12+) with per-row salt — never a fast hash.</>,
-              <>JWTs can't be revoked before <InlineCode>exp</InlineCode> — keep <InlineCode>exp</InlineCode> short + refresh token; store in <InlineCode>httpOnly</InlineCode> cookies, not <InlineCode>localStorage</InlineCode>.</>,
-              <>Pin the verifying algorithm server-side — <InlineCode>alg: none</InlineCode> and algorithm confusion are forged-admin-token bugs.</>,
-              <>OAuth 2.0: Authorization Code + PKCE for SPAs/mobile, Client Credentials for service-to-service; Implicit is dead.</>,
-              <>AuthZ model: RBAC by default, ABAC for attribute-based, ReBAC for relationship-based — keep the check in <em>one</em> place.</>,
-            ]}
-          />
+          <h4 className="mb-2 font-semibold">Password storage</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Passwords get a <em>slow</em> hash on purpose: <InlineCode>argon2id</InlineCode> (or <InlineCode>bcrypt</InlineCode> cost
+            12+) is memory-hard, so an attacker with a stolen DB can't GPU-grind billions of guesses per second. MD5/SHA1 are fast
+            hashes — a fast hash on a password is a leaked password. Per-row salt is built in; it stops one rainbow table from
+            cracking the whole table.
+          </p>
         </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">JWTs: no revocation, careful storage</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            JWTs can't be revoked before <InlineCode>exp</InlineCode> — the server holds no state to invalidate. So keep{' '}
+            <InlineCode>exp</InlineCode> short and pair with a refresh token, or keep a server-side session/denylist and accept the
+            lookup. Store in <InlineCode>httpOnly + Secure + SameSite</InlineCode> cookies: <InlineCode>localStorage</InlineCode> is
+            readable by any XSS payload on the page, and a stolen token is a valid login until it expires.
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">Pin the verifying algorithm</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Pin the verifying algorithm server-side. <InlineCode>alg: none</InlineCode> tells a naive library to skip signature checks
+            entirely; algorithm confusion feeds an RS256 public key as an HS256 <em>secret</em> so the attacker signs their own
+            tokens. Both are forged-admin-token bugs — never trust the algorithm the token names.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'Authorization Code + PKCE',
+              tone: 'c',
+              body: (
+                <>
+                  For SPAs and mobile. PKCE binds the code to the client that requested it, so an intercepted code is useless.
+                </>
+              ),
+            },
+            {
+              label: 'Client Credentials',
+              tone: 'a',
+              body: <>For service-to-service — no user, just a trusted client authenticating as itself.</>,
+            },
+            {
+              label: 'Implicit (dead)',
+              tone: 'fail',
+              body: <>Leaked tokens in the URL. Deprecated — don't use it.</>,
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            { label: 'RBAC', tone: 'a', body: <>Roles assigned to users — the right default for most apps.</> },
+            {
+              label: 'ABAC',
+              tone: 'b',
+              body: <>Policy over attributes — region, time, ownership — when access depends on context.</>,
+            },
+            {
+              label: 'ReBAC',
+              tone: 'c',
+              body: (
+                <>
+                  Zanzibar-style relationship graph — when access depends on "is X related to Y". Whichever model: keep the check in{' '}
+                  <em>one</em> place (middleware or a policy module) — scattered per-handler <InlineCode>if</InlineCode>s are how one
+                  handler ends up missing it.
+                </>
+              ),
+            },
+          ]}
+        />
       </Section>
 
       <Section id="db" kicker="5.3" title="Databases — SQL & NoSQL">
@@ -110,6 +234,88 @@ export default function Layer5() {
         />
         <NPlusOneLab />
         <IndexDemo />
+        <Card>
+          <h4 className="mb-2 font-semibold">Isolation levels</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Know your default isolation level — Postgres is READ COMMITTED, which still allows lost updates across a read-then-write.
+            A balance read in request A and a write in request B interleave and one update vanishes. Fix with a transaction +{' '}
+            <InlineCode>SELECT ... FOR UPDATE</InlineCode>, or an optimistic <InlineCode>version</InlineCode> column. SERIALIZABLE
+            removes the anomaly but adds serialization failures you must retry.
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">MVCC &amp; dead tuples</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            MVCC is why Postgres readers never block writers: an <InlineCode>UPDATE</InlineCode> writes a new row version and leaves
+            the old one as a dead tuple. A long-running transaction holds a snapshot, so <InlineCode>VACUUM</InlineCode> can't reclaim
+            those tuples — the table and its indexes bloat, and scans get slower even though the live row count hasn't changed. One
+            forgotten open transaction can bloat a hot table for hours.
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">EXPLAIN ANALYZE — read the plan</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            <InlineCode>EXPLAIN ANALYZE</InlineCode> shows the real plan, not the guess. A <em>Seq Scan</em> on a large table in a
+            request path is a bug: <InlineCode>cost=0..21000 rows=1</InlineCode> means it read a million rows to return one. Add the
+            index and it becomes an <em>Index Scan</em>, <InlineCode>cost=0.42..8.43</InlineCode> — O(log n) instead of O(n). A new
+            hot query path gets its index in the <em>same</em> PR. (The toggle above is this, live.)
+          </p>
+        </Card>
+        <Compare
+          items={[
+            { label: 'B-Tree', tone: 'a', body: <>The default — equality and range queries.</> },
+            { label: 'GIN', tone: 'b', body: <><InlineCode>jsonb</InlineCode>, full-text, array containment.</> },
+            { label: 'GiST', tone: 'c', body: <>Geometric and range-overlap queries.</> },
+          ]}
+        />
+        <Card>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Partial indexes (<InlineCode>WHERE status = 'active'</InlineCode>) stay small; covering indexes (<InlineCode>INCLUDE</InlineCode>)
+            let a query be served index-only with no heap fetch. Indexes aren't free — every one is extra work on every write and more
+            disk.
+          </p>
+        </Card>
+        <Steps
+          steps={[
+            { label: 'index' },
+            { label: 'rewrite the query' },
+            { label: 'connection pooling' },
+            { label: 'read replicas' },
+            { label: 'partitioning' },
+            { label: 'sharding' },
+          ]}
+          caption={
+            <>
+              <strong>Scaling order.</strong> Connection pooling (PgBouncer) because Postgres connections are processes — a few
+              hundred is the practical ceiling. Read replicas mean you've accepted replication lag and stale reads. Sharding (Citus,
+              Vitess) is last. Don't shard before you've indexed — most "we need to scale" is a missing index.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Document — MongoDB',
+              tone: 'a',
+              body: <>When data is genuinely document-shaped. The shard key is permanent — get it right.</>,
+            },
+            {
+              label: 'Key-value — Redis',
+              tone: 'b',
+              body: (
+                <>
+                  Cache, sessions, rate-limit counters, leaderboards. Not a source of truth unless you've accepted the durability
+                  tradeoff.
+                </>
+              ),
+            },
+            {
+              label: 'Wide-column — Cassandra/Dynamo',
+              tone: 'c',
+              body: <>Massive write throughput with known query patterns — model a table per query.</>,
+            },
+          ]}
+        />
         <Steps
           steps={[
             { label: 'PR renames a column + code' },
@@ -126,17 +332,6 @@ export default function Layer5() {
             </>
           }
         />
-        <Card>
-          <Bullets
-            items={[
-              <>Know your isolation level (Postgres = READ COMMITTED) — guard a read-then-write with a transaction + <InlineCode>FOR UPDATE</InlineCode> or a <InlineCode>version</InlineCode> column.</>,
-              <>MVCC: an <InlineCode>UPDATE</InlineCode> leaves a dead tuple; a long-open transaction blocks <InlineCode>VACUUM</InlineCode> and bloats the table.</>,
-              <>Index types: B-Tree (default), GIN (<InlineCode>jsonb</InlineCode>/array/full-text), GiST (geo); partial + covering indexes. Every index costs writes.</>,
-              <>Scaling order: index → rewrite query → pool → read replicas → partition → shard. Most "we need scale" is a missing index.</>,
-              <>Datastore: document (Mongo) for document-shaped data, key-value (Redis) for cache/sessions, wide-column for write throughput.</>,
-            ]}
-          />
-        </Card>
         <MermaidDiagram
           chart={`erDiagram
             USER ||--o{ ORDER : places
@@ -178,6 +373,48 @@ export default function Layer5() {
           description="Caches trade staleness for speed. The strategy you pick decides which failure mode you own — a stale read, a slow write, or a lost write."
         />
         <CacheAnimator />
+        <Compare
+          items={[
+            {
+              label: 'Cache-aside (lazy)',
+              tone: 'c',
+              body: (
+                <>
+                  Read checks cache → miss → load DB → populate. Writes hit the DB and <em>delete</em> the key (don't update it — a
+                  concurrent reader can repopulate stale and win the race). Failure mode: cold start, every key missing at once.
+                </>
+              ),
+            },
+            {
+              label: 'Write-through',
+              tone: 'a',
+              body: (
+                <>
+                  Write cache + DB in the same path. Cache is never stale, but you pay the DB write latency on every write and still
+                  cache data nobody reads.
+                </>
+              ),
+            },
+            {
+              label: 'Write-behind',
+              tone: 'warn',
+              body: (
+                <>
+                  Write cache, ack, flush to DB async. Lowest write latency — but the unflushed buffer is real data that only exists
+                  in Redis. Crash before flush = silent loss. Only when the write is reconstructable or loss-tolerant (view counts,
+                  not orders).
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Every key: TTL + jitter</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Every key needs a TTL <em>and</em> jitter (<InlineCode>ttl + rand(0, ttl/4)</InlineCode>). Identical TTLs set during a
+            deploy all expire in the same second → synchronized stampede on the DB.
+          </p>
+        </Card>
         <Steps
           steps={[
             { label: 'a hot key expires' },
@@ -208,16 +445,6 @@ export default function Layer5() {
             </>
           }
         />
-        <Card>
-          <Bullets
-            items={[
-              <>Cache-aside: read-through; writes hit the DB and <em>delete</em> the key (don't update — a reader can repopulate stale).</>,
-              <>Write-through: cache + DB in one path — never stale, slower writes.</>,
-              <>Write-behind: cache now, flush async — fastest, but the unflushed buffer is real data only in Redis.</>,
-              <>Every key needs a TTL <em>and</em> jitter — identical TTLs expire together and stampede the DB.</>,
-            ]}
-          />
-        </Card>
       </Section>
 
       <Section id="mq" kicker="5.5" title="Message Queues & Event Streaming">
@@ -228,37 +455,73 @@ export default function Layer5() {
           description="Reach for a queue to decouple producer from consumer, absorb a traffic spike, or fan out — not to replace a call that should just be a synchronous function. Crossing the boundary async means you've signed up for eventual consistency."
         />
         <KafkaDemo />
+        <Compare
+          items={[
+            {
+              label: 'RabbitMQ — work queue',
+              tone: 'warn',
+              body: (
+                <>
+                  A broker: exchanges (direct/topic/fanout) route to queues, a consumer ACKs to remove a message, a nack or timeout
+                  requeues it, and a dead-letter exchange catches what keeps failing so one poison message doesn't loop forever. The
+                  message is gone once ACKed — a work queue, not a log. Best for task distribution and routing: resize an image, send
+                  a webhook, charge a card.
+                </>
+              ),
+            },
+            {
+              label: 'Kafka — event log',
+              tone: 'b',
+              body: (
+                <>
+                  An append-only log: messages stay for a retention window, so a consumer group tracks its own <em>offset</em> and can
+                  replay from any point. Partitions are the unit of parallelism — one partition is consumed by exactly one consumer in
+                  a group, so more consumers than partitions just idle. Best for event sourcing, replay, and multiple independent
+                  consumer groups off the same stream: <InlineCode>OrderPlaced</InlineCode> feeds billing, analytics, and search.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">RabbitMQ vs Kafka — when each</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-orange-400/30 bg-orange-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-orange-300">RabbitMQ — work queue</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A job needs to be done once by one worker: resize an image, send a webhook, charge a card. Message is consumed and gone. Rich routing, per-message ACK, easy competing-consumers scaling.
-              </p>
-            </div>
-            <div className="rounded-xl border border-violet-400/30 bg-violet-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-violet-300">Kafka — event log</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                An event many systems care about and may need to re-process: <InlineCode>OrderPlaced</InlineCode> feeds billing, analytics, and search, each as its own consumer group reading the same retained log at its own offset.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            The duplicate-processing bug is the one to internalize: at-least-once means "design every consumer to survive seeing the same message twice." It's the exact shape of the dual-write problem in 5.4 — the outbox is to events what cache-aside's delete is to cache entries: make the unsafe step self-healing.
+          <h4 className="mb-2 font-semibold">Same key → same partition</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Same key → same partition (hash of key mod partition count), which is the <em>only</em> ordering guarantee Kafka gives
+            you — per key, per partition. Across partitions there is no global order. Choose the key for the ordering you actually
+            need (e.g. <InlineCode>user_id</InlineCode> so one user's events stay in sequence).
           </p>
         </Card>
-        <Card>
-          <Bullets
-            items={[
-              <>RabbitMQ: a broker — exchanges route to queues, consumers ACK, a DLX catches poison messages. A work queue, not a log.</>,
-              <>Kafka: an append-only log — partitions are parallelism; consumer groups track their own offset and can replay.</>,
-              <>Same key → same partition: the <em>only</em> ordering guarantee. Choose the key for the ordering you need.</>,
-              <>At-least-once by default — consumers <em>will</em> see duplicates; make them idempotent. Exactly-once is something you build.</>,
-              <>Outbox: write the event to a table in the <em>same</em> transaction as the business row; a relay publishes it.</>,
-            ]}
-          />
-        </Card>
+        <Steps
+          steps={[
+            { label: 'broker delivers a message' },
+            { label: 'the ACK is lost' },
+            { label: 'broker redelivers' },
+            { label: 'non-idempotent consumer emails twice', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              Delivery is <strong>at-least-once</strong> by default — a consumer <em>will</em> see duplicates. Exactly-once is a
+              property you build: a dedup table keyed by message/event id, or an idempotency key checked before the side effect — not
+              a checkbox you tick.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: 'write business row + event to outbox', tone: 'ok' },
+            { label: 'one atomic commit', tone: 'ok' },
+            { label: 'a relay polls the outbox' },
+            { label: 'publishes to the broker', tone: 'ok' },
+          ]}
+          caption={
+            <>
+              <strong>The outbox pattern.</strong> Publishing to the broker and writing to your DB are two systems with no shared
+              transaction — crash between them and the event is lost or sent without the data. Instead write the event to an{' '}
+              <InlineCode>outbox</InlineCode> table in the <em>same</em> transaction as the business row; a separate relay publishes
+              it. One atomic commit, then at-least-once delivery downstream.
+            </>
+          }
+        />
       </Section>
 
       <Section id="micro" kicker="5.6" title="Microservices & Service Architecture">
@@ -286,15 +549,74 @@ export default function Layer5() {
           }
         />
         <Card>
-          <Bullets
-            items={[
-              <>Split by bounded context, never by technical layer — a "DB service + API service" has all the cost, none of the benefit.</>,
-              <>Sync (REST/gRPC) when the caller needs the answer; async (events) when it doesn't — the wrong choice couples uptime or forces polling.</>,
-              <>Every cross-service call needs <em>timeout</em> + <em>retry-with-jitter</em> + <em>circuit breaker</em> + <em>bulkhead</em>.</>,
-              <>No distributed transaction — a Saga is local transactions + compensating actions; orchestration vs choreography.</>,
-              <>The cost: partial failure is normal, everything is eventually consistent — you need correlation ids + structured logs.</>,
-            ]}
-          />
+          <h4 className="mb-2 font-semibold">Split by bounded context, never by layer</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Split by bounded context (DDD), never by technical layer. A "database service" + "API service" + "logic service" gives
+            you all the network failure of microservices and none of the independent-deploy benefit — every feature still touches all
+            three. A real seam is a domain that owns its data and can deploy and scale alone.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'Sync — REST / gRPC',
+              tone: 'a',
+              body: (
+                <>
+                  When the caller needs the answer to continue — a price lookup. Picking sync for a workflow couples two services'
+                  uptime: if billing is down, checkout is down.
+                </>
+              ),
+            },
+            {
+              label: 'Async — events',
+              tone: 'b',
+              body: (
+                <>
+                  When the caller doesn't need the answer — "order placed" can let billing and email catch up later. Picking async
+                  for a query forces the caller to poll or block.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            { label: 'Timeout', tone: 'a', body: <>An unbounded wait is how one slow service hangs every caller.</> },
+            {
+              label: 'Retry with jitter',
+              tone: 'b',
+              body: <>A fixed retry interval synchronizes every client into a thundering herd the instant the service recovers.</>,
+            },
+            {
+              label: 'Circuit breaker',
+              tone: 'warn',
+              body: <>Stop calling a service that's clearly down so it can recover instead of being hammered.</>,
+            },
+            {
+              label: 'Bulkhead',
+              tone: 'c',
+              body: <>Isolate the thread/connection pool per dependency so one slow dependency can't exhaust the whole pool.</>,
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">No distributed transaction — the Saga</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            There's no distributed transaction across services — no shared <InlineCode>COMMIT</InlineCode>. A Saga is a sequence of
+            local transactions, each emitting an event for the next; if step 3 fails, you run <em>compensating</em> actions to undo
+            steps 1–2. <strong>Orchestration:</strong> one coordinator drives the steps — easier to see and debug.{' '}
+            <strong>Choreography:</strong> services react to each other's events — looser coupling, but the flow is implicit and hard
+            to trace. (The playground below runs a tiny saga.)
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">The cost you sign up for</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Partial failure is now normal, every state change is eventually consistent, and a single request fans out across
+            services — so you need a correlation id propagated through every call and structured logs, or a production bug is
+            unobservable.
+          </p>
         </Card>
         <CodePlayground
           mode="js"
