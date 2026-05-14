@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Rocket, Mail, CreditCard, Webhook, Radio, Clock, Coins, KeyRound, Play, RotateCcw } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat } from '../components/UI';
+import { Section, TopicCard, InlineCode, Card, Stat, Compare, Steps } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
 import { cn } from '../lib/cn';
@@ -20,35 +20,94 @@ export default function Layer12() {
           title="The flow every SaaS implements"
           description="The recommended flow for SPAs and mobile. PKCE protects against authorization-code interception by binding the code to a per-request secret only the original client knows."
         >
-          <Bullets
+          <OAuthPkceFlow />
+          <Steps
+            steps={[
+              { label: 'code returned on redirect URL' },
+              { label: 'malicious app / leaky referer / logged URL captures it' },
+              { label: 'attacker holds the code', tone: 'fail' },
+              { label: 'but cannot exchange it without the verifier', tone: 'ok' },
+            ]}
+            caption={
+              <>
+                <strong>The attack PKCE defeats.</strong> The auth code comes back on a redirect URL. A malicious app registered for the
+                same custom scheme, a leaky referer header, or a logged URL can <em>steal that code</em>. Without PKCE, whoever holds the
+                code can exchange it for tokens. PKCE makes a stolen code worthless on its own — the client generates a random{' '}
+                <InlineCode>code_verifier</InlineCode>, sends only <InlineCode>code_challenge = base64url(SHA256(verifier))</InlineCode> with{' '}
+                <InlineCode>/authorize</InlineCode>, then at <InlineCode>/token</InlineCode> presents the raw verifier; the server re-hashes
+                and compares. The attacker has the code but not the verifier — the hash is one-way.
+              </>
+            }
+          />
+          <Compare
             items={[
-              <>The attack PKCE defeats: the auth code comes back on a redirect URL. A malicious app registered for the same custom scheme, a leaky referer header, or a logged URL can <em>steal that code</em>. Without PKCE, whoever holds the code can exchange it for tokens. PKCE makes a stolen code worthless on its own.</>,
-              <>Mechanism: the client generates a random <InlineCode>code_verifier</InlineCode>, sends only <InlineCode>code_challenge = base64url(SHA256(verifier))</InlineCode> with <InlineCode>/authorize</InlineCode>. At <InlineCode>/token</InlineCode> it presents the raw verifier; the server re-hashes and compares. The attacker has the code but not the verifier — the hash is one-way.</>,
-              <>Why a client secret can't save a public client: a SPA or mobile binary ships to the user. Anyone can crack it open and read an embedded secret, so it's not secret. PKCE replaces a <em>static shared</em> secret with a <em>per-request</em> one generated fresh client-side — nothing to extract from the bundle.</>,
-              <>Always <InlineCode>code_challenge_method=S256</InlineCode>, never <InlineCode>plain</InlineCode>: with <InlineCode>plain</InlineCode> the challenge <em>is</em> the verifier, so intercepting the <InlineCode>/authorize</InlineCode> request hands over both. The auth code is single-use and ~30–60s lived — a replayed exchange fails because the code is already spent.</>,
-              <>Token storage: refresh token in an <InlineCode>httpOnly</InlineCode> + <InlineCode>Secure</InlineCode> cookie, access token in memory only. Access token in <InlineCode>localStorage</InlineCode> = any XSS payload reads it (see L9). Implicit flow (token straight in the redirect fragment) is dead — it has no exchange step to protect.</>,
+              {
+                label: 'Why a client secret can\'t save a public client',
+                tone: 'warn',
+                body: (
+                  <>
+                    A SPA or mobile binary ships to the user. Anyone can crack it open and read an embedded secret, so it's not secret.
+                    PKCE replaces a <em>static shared</em> secret with a <em>per-request</em> one generated fresh client-side — nothing to
+                    extract from the bundle.
+                  </>
+                ),
+              },
+              {
+                label: 'Always S256, never plain',
+                tone: 'fail',
+                body: (
+                  <>
+                    With <InlineCode>code_challenge_method=plain</InlineCode> the challenge <em>is</em> the verifier, so intercepting the{' '}
+                    <InlineCode>/authorize</InlineCode> request hands over both. The auth code is single-use and ~30–60s lived — a replayed
+                    exchange fails because the code is already spent. Always <InlineCode>S256</InlineCode>.
+                  </>
+                ),
+              },
+              {
+                label: 'Token storage',
+                tone: 'c',
+                body: (
+                  <>
+                    Refresh token in an <InlineCode>httpOnly</InlineCode> + <InlineCode>Secure</InlineCode> cookie, access token in memory
+                    only. Access token in <InlineCode>localStorage</InlineCode> = any XSS payload reads it (see L9). Implicit flow (token
+                    straight in the redirect fragment) is dead — it has no exchange step to protect.
+                  </>
+                ),
+              },
             ]}
           />
-          <OAuthPkceFlow />
         </TopicCard>
+        <Compare
+          items={[
+            {
+              label: 'PKCE — public clients',
+              tone: 'a',
+              body: (
+                <>
+                  Anything that runs on the user's device: SPA, mobile app, desktop app, CLI. There is no trusted place to keep a secret,
+                  so the client proves itself with a fresh per-request verifier instead. This is now the recommended default for{' '}
+                  <em>all</em> clients in OAuth 2.1, even confidential ones.
+                </>
+              ),
+            },
+            {
+              label: 'Client secret — confidential clients',
+              tone: 'b',
+              body: (
+                <>
+                  Server-to-server only: your backend talking to an IdP, where the secret lives in env/secrets manager and never leaves
+                  the box. Use it <em>in addition to</em> PKCE, not instead — the secret authenticates the app, PKCE binds the specific
+                  request.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">PKCE vs client secret — when each</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-cyan-400/30 bg-cyan-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-cyan-300">PKCE — public clients</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Anything that runs on the user's device: SPA, mobile app, desktop app, CLI. There is no trusted place to keep a secret, so the client proves itself with a fresh per-request verifier instead. This is now the recommended default for <em>all</em> clients in OAuth 2.1, even confidential ones.
-              </p>
-            </div>
-            <div className="rounded-xl border border-violet-400/30 bg-violet-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-violet-300">Client secret — confidential clients</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Server-to-server only: your backend talking to an IdP, where the secret lives in env/secrets manager and never leaves the box. Use it <em>in addition to</em> PKCE, not instead — the secret authenticates the app, PKCE binds the specific request.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Rule of thumb: if the code ships to the user, assume the secret is public. The question is never "is my client confidential or public" but "can an attacker read this string" — and for anything in a browser or app bundle, they can.
+          <h4 className="mb-2 font-semibold">Rule of thumb — assume the secret is public</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            If the code ships to the user, assume the secret is public. The question is never "is my client confidential or public" but
+            "can an attacker read this string" — and for anything in a browser or app bundle, they can.
           </p>
         </Card>
         <CodePlayground
@@ -82,36 +141,102 @@ console.log('challenge (send in /authorize):', challenge);
           title="The auth flows you'll actually build"
           description="The signup flow is half a product on its own — verification email, magic link expiry, MFA enrolment, recovery codes. Get it wrong and your support inbox fills up."
         >
-          <Bullets
-            items={[
-              <><strong>Account-existence leak:</strong> <InlineCode>POST /forgot-password</InlineCode> must return the same 200 + "check your email" for a known and unknown address. A 404 on unknown emails turns the endpoint into a free membership oracle — feed it a breach list and you've enumerated every user. Same logic on signup ("email already taken") and login timing.</>,
-              <><strong>Raw token out, hashed token stored:</strong> the reset token is a bearer credential — treat it like a password. Email the raw <InlineCode>crypto.randomBytes(32)</InlineCode>; store only its SHA-256 + <InlineCode>user_id</InlineCode> + <InlineCode>expires_at</InlineCode>. A DB leak then exposes hashes, not live reset links. Short expiry (15–30 min) caps the replay window if the email is intercepted.</>,
-              <><strong>The step everyone forgets:</strong> after a successful reset, delete the reset row <em>and invalidate every existing session</em>. If an attacker reset the password <em>because</em> they were already in, skipping this leaves their session alive — the reset achieved nothing. Then send a "password changed" notice with a revert link so the real owner notices a hijack.</>,
-              <><strong>Email verification ≠ ownership forever:</strong> verify on signup, but also re-verify on email <em>change</em> — and keep sending to the old address until the new one is confirmed, or an attacker who briefly controls the account redirects all future mail to themselves.</>,
-              <><strong>MFA without recovery codes is a lockout machine:</strong> lost-device is the #1 MFA support ticket. Issue 8–10 single-use recovery codes at enrolment, store them hashed like passwords. SMS is a last-resort factor only — SIM-swap defeats it, and it's a network dependency you don't control.</>,
-            ]}
-          />
           <ResetFlow />
           <MfaPicker />
+          <Steps
+            steps={[
+              { label: 'attacker resets password — already inside the account' },
+              { label: 'password updated, reset row deleted' },
+              { label: 'existing sessions left alive', tone: 'fail' },
+              { label: 'attacker\'s session still valid — reset achieved nothing', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <strong>The step everyone forgets.</strong> After a successful reset, delete the reset row <em>and invalidate every
+                existing session</em>. If an attacker reset the password <em>because</em> they were already in, skipping this leaves
+                their session alive. Then send a "password changed" notice with a revert link so the real owner notices a hijack.
+              </>
+            }
+          />
+          <Compare
+            items={[
+              {
+                label: 'Account-existence leak',
+                tone: 'fail',
+                body: (
+                  <>
+                    <InlineCode>POST /forgot-password</InlineCode> must return the same 200 + "check your email" for a known and unknown
+                    address. A 404 on unknown emails turns the endpoint into a free membership oracle — feed it a breach list and you've
+                    enumerated every user. Same logic on signup ("email already taken") and login timing.
+                  </>
+                ),
+              },
+              {
+                label: 'Raw token out, hashed token stored',
+                tone: 'a',
+                body: (
+                  <>
+                    The reset token is a bearer credential — treat it like a password. Email the raw{' '}
+                    <InlineCode>crypto.randomBytes(32)</InlineCode>; store only its SHA-256 + <InlineCode>user_id</InlineCode> +{' '}
+                    <InlineCode>expires_at</InlineCode>. A DB leak then exposes hashes, not live reset links. Short expiry (15–30 min) caps
+                    the replay window if the email is intercepted.
+                  </>
+                ),
+              },
+              {
+                label: 'Email verification ≠ ownership forever',
+                tone: 'b',
+                body: (
+                  <>
+                    Verify on signup, but also re-verify on email <em>change</em> — and keep sending to the old address until the new one
+                    is confirmed, or an attacker who briefly controls the account redirects all future mail to themselves.
+                  </>
+                ),
+              },
+              {
+                label: 'MFA without recovery codes is a lockout machine',
+                tone: 'warn',
+                body: (
+                  <>
+                    Lost-device is the #1 MFA support ticket. Issue 8–10 single-use recovery codes at enrolment, store them hashed like
+                    passwords. SMS is a last-resort factor only — SIM-swap defeats it, and it's a network dependency you don't control.
+                  </>
+                ),
+              },
+            ]}
+          />
         </TopicCard>
+        <Compare
+          items={[
+            {
+              label: 'WebAuthn / passkeys — phishing-resistant',
+              tone: 'c',
+              body: (
+                <>
+                  The credential is bound to your origin by the browser — a lookalike domain simply can't trigger it, so phishing the
+                  second factor is structurally impossible. Private key never leaves the authenticator. Best UX and best security; the
+                  modern default for new SaaS. Cost: device/browser support edge cases and a more involved enrolment flow.
+                </>
+              ),
+            },
+            {
+              label: 'TOTP — solid, cheap, universal',
+              tone: 'warn',
+              body: (
+                <>
+                  A shared seed + RFC 6238 time-stepped code. No phone-network dependency, works with any authenticator app. But it{' '}
+                  <em>is</em> phishable — a real-time proxy phishing page relays the 6 digits before they expire. Safe default for most
+                  products; pair it with a path toward passkeys.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">TOTP vs WebAuthn — when each</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-emerald-300">WebAuthn / passkeys — phishing-resistant</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                The credential is bound to your origin by the browser — a lookalike domain simply can't trigger it, so phishing the second factor is structurally impossible. Private key never leaves the authenticator. Best UX and best security; the modern default for new SaaS. Cost: device/browser support edge cases and a more involved enrolment flow.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">TOTP — solid, cheap, universal</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A shared seed + RFC 6238 time-stepped code. No phone-network dependency, works with any authenticator app. But it <em>is</em> phishable — a real-time proxy phishing page relays the 6 digits before they expire. Safe default for most products; pair it with a path toward passkeys.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Default to TOTP for breadth today, offer WebAuthn for users who want it. The failure mode that bites either way: no recovery path. A second factor you can't recover from is a denial-of-service on your own users.
+          <h4 className="mb-2 font-semibold">Either way: no recovery path is a self-inflicted DoS</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Default to TOTP for breadth today, offer WebAuthn for users who want it. The failure mode that bites either way: no recovery
+            path. A second factor you can't recover from is a denial-of-service on your own users.
           </p>
         </Card>
       </Section>
@@ -123,35 +248,105 @@ console.log('challenge (send in /authorize):', challenge);
           title="Anything slow goes through a queue"
           description="Email, image resize, PDF gen, billing — anything > 100ms or that can fail and retry. Idempotency + exponential backoff + dead-letter is the default recipe."
         >
-          <Bullets
+          <JobQueueDemo />
+          <Steps
+            steps={[
+              { label: 'worker picks up job' },
+              { label: 'sends the email' },
+              { label: 'crashes before ACK', tone: 'fail' },
+              { label: 'broker redelivers' },
+              { label: 'second email sent', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <strong>At-least-once means the job WILL run twice.</strong> The worker crashes after sending the email but before ACKing
+                → redelivery → second email. The fix is not "make delivery exactly-once" (you can't) — it's an idempotent worker: dedupe
+                on a business key (<InlineCode>order_id</InlineCode>), or check-and-set a <InlineCode>processed_jobs</InlineCode> row before
+                the side effect.
+              </>
+            }
+          />
+          <Compare
             items={[
-              <><strong>Why off the request path:</strong> a 3-second PDF render in the handler holds a connection, a worker thread, and the user's patience hostage. Worse, if it fails, the user retries — and now you're doing the slow thing twice with no record. The queue gives you a durable record, retries you control, and a fast 202 to the user.</>,
-              <><strong>At-least-once means the job WILL run twice.</strong> The worker crashes after sending the email but before ACKing → redelivery → second email. The fix is not "make delivery exactly-once" (you can't) — it's an idempotent worker: dedupe on a business key (<InlineCode>order_id</InlineCode>), or check-and-set a <InlineCode>processed_jobs</InlineCode> row before the side effect.</>,
-              <><strong>Jitter prevents the synchronized retry storm.</strong> A downstream API goes down; 5,000 jobs fail at the same instant. With pure exponential backoff they <em>all</em> retry at exactly <InlineCode>t+2s</InlineCode>, then <InlineCode>t+4s</InlineCode> — synchronized waves that re-knock the service over the moment it recovers. <InlineCode>backoff = base · 2^attempt + rand(0, base·2^attempt)</InlineCode> smears the herd across the window.</>,
-              <><strong>Cap retries, then dead-letter.</strong> A poison job — malformed payload, deleted resource — will fail forever. Without a cap it loops, burning the worker pool. After N attempts (≈4) it moves to a dead-letter queue: a quarantine for human triage, not a black hole. You <em>page on dead-letter depth</em>, not on individual failures — one failure is noise, a growing DLQ is an incident.</>,
-              <><strong>Visibility timeout is a footgun:</strong> if a job legitimately takes longer than the broker's invisibility window, the broker assumes the worker died and redelivers — now two workers run the same job concurrently. Size the timeout to the realistic worst-case duration, or heartbeat to extend it.</>,
+              {
+                label: 'Why off the request path',
+                tone: 'a',
+                body: (
+                  <>
+                    A 3-second PDF render in the handler holds a connection, a worker thread, and the user's patience hostage. Worse, if
+                    it fails, the user retries — and now you're doing the slow thing twice with no record. The queue gives you a durable
+                    record, retries you control, and a fast 202 to the user.
+                  </>
+                ),
+              },
+              {
+                label: 'Jitter prevents the synchronized retry storm',
+                tone: 'warn',
+                body: (
+                  <>
+                    A downstream API goes down; 5,000 jobs fail at the same instant. With pure exponential backoff they <em>all</em> retry
+                    at exactly <InlineCode>t+2s</InlineCode>, then <InlineCode>t+4s</InlineCode> — synchronized waves that re-knock the
+                    service over the moment it recovers. <InlineCode>backoff = base · 2^attempt + rand(0, base·2^attempt)</InlineCode>{' '}
+                    smears the herd across the window.
+                  </>
+                ),
+              },
+              {
+                label: 'Cap retries, then dead-letter',
+                tone: 'fail',
+                body: (
+                  <>
+                    A poison job — malformed payload, deleted resource — will fail forever. Without a cap it loops, burning the worker
+                    pool. After N attempts (≈4) it moves to a dead-letter queue: a quarantine for human triage, not a black hole. You{' '}
+                    <em>page on dead-letter depth</em>, not on individual failures — one failure is noise, a growing DLQ is an incident.
+                  </>
+                ),
+              },
+              {
+                label: 'Visibility timeout is a footgun',
+                tone: 'b',
+                body: (
+                  <>
+                    If a job legitimately takes longer than the broker's invisibility window, the broker assumes the worker died and
+                    redelivers — now two workers run the same job concurrently. Size the timeout to the realistic worst-case duration, or
+                    heartbeat to extend it.
+                  </>
+                ),
+              },
             ]}
           />
-          <JobQueueDemo />
         </TopicCard>
+        <Compare
+          items={[
+            {
+              label: 'Thundering herd on recovery',
+              tone: 'fail',
+              body: (
+                <>
+                  No jitter → every failed job retries on the same tick. The recovering service gets hit by the full backlog at once and
+                  falls over again. This is the same shape as the cache stampede in L5.4 — synchronized clients amplifying one event.
+                  Jitter is the cure in both.
+                </>
+              ),
+            },
+            {
+              label: 'The duplicate side effect',
+              tone: 'warn',
+              body: (
+                <>
+                  Crash-after-side-effect-before-ACK → redelivery → the customer gets charged / emailed / shipped twice. The job body
+                  being identical doesn't help; the <em>effect</em> is what duplicates. Make the side effect itself idempotent, keyed to
+                  a business event, or wrap it in a dedup check.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">The retry failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Thundering herd on recovery</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                No jitter → every failed job retries on the same tick. The recovering service gets hit by the full backlog at once and falls over again. This is the same shape as the cache stampede in L5.4 — synchronized clients amplifying one event. Jitter is the cure in both.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The duplicate side effect</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Crash-after-side-effect-before-ACK → redelivery → the customer gets charged / emailed / shipped twice. The job body being identical doesn't help; the <em>effect</em> is what duplicates. Make the side effect itself idempotent, keyed to a business event, or wrap it in a dedup check.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Default recipe: idempotent worker + exponential backoff + jitter + capped attempts + dead-letter you alert on. Queue choice (RabbitMQ work-queue vs Kafka log) and broker internals live in L5.5 — here it's the operational discipline around them.
+          <h4 className="mb-2 font-semibold">The default recipe</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Idempotent worker + exponential backoff + jitter + capped attempts + dead-letter you alert on. Queue choice (RabbitMQ
+            work-queue vs Kafka log) and broker internals live in L5.5 — here it's the operational discipline around them.
           </p>
         </Card>
       </Section>
@@ -163,35 +358,102 @@ console.log('challenge (send in /authorize):', challenge);
           title="HTTP callbacks that won't bite back"
           description="Every webhook needs: HMAC signature, timestamp (replay defence), idempotency key, retry policy on the sender, dead-letter on the receiver."
         >
-          <Bullets
+          <WebhookSignatureDemo />
+          <Steps
+            steps={[
+              { label: 'sender POSTs order.paid' },
+              { label: 'your 2xx is lost — network blip / slow response' },
+              { label: 'sender retries' },
+              { label: 'handler runs order.paid twice', tone: 'fail' },
+              { label: 'two orders, two fulfilments', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <strong>At-least-once delivery → the duplicate-order bug.</strong> The sender doesn't get your 2xx and retries. Dedupe on
+                the event ID or a business key with a unique constraint — the second insert fails harmlessly and you return 200.
+              </>
+            }
+          />
+          <Compare
             items={[
-              <><strong>The webhook endpoint is an untrusted boundary.</strong> Anyone on the internet can <InlineCode>POST</InlineCode> to your <InlineCode>/webhook</InlineCode> URL pretending to be Stripe. <em>Verify the HMAC signature before doing any work</em> — recompute <InlineCode>HMAC-SHA256(secret, timestamp + "." + raw_body)</InlineCode> and constant-time compare. Verify on the <em>raw bytes</em>, not the re-serialized JSON — key reordering changes the hash.</>,
-              <><strong>Signature alone doesn't stop replay.</strong> A valid past payload, captured and re-sent, has a valid signature. That's why the timestamp is signed too: reject if drift &gt; ~5 min. The timestamp inside the signed region can't be tampered without breaking the signature.</>,
-              <><strong>At-least-once delivery → the duplicate-order bug.</strong> The sender doesn't get your 2xx (network blip, your slow response) and retries. Your handler runs <InlineCode>order.paid</InlineCode> twice → two orders, two fulfilments. Dedupe on the event ID or a business key with a unique constraint — the second insert fails harmlessly and you return 200.</>,
-              <><strong>Return 2xx fast, process async.</strong> Do the signature check, enqueue, return 200 in milliseconds. If you do the real work inline and it takes 30s, the sender times out, marks it failed, and retries — now you're processing a slow job twice. Ack-then-work, never work-then-ack.</>,
-              <><strong>Sending side:</strong> sign every payload, include a timestamp and an idempotency key, retry non-2xx with backoff + jitter, dead-letter after N attempts. Document the scheme like Stripe (<InlineCode>Stripe-Signature</InlineCode>) or GitHub (<InlineCode>X-Hub-Signature-256</InlineCode>) so receivers can verify.</>,
+              {
+                label: 'The endpoint is an untrusted boundary',
+                tone: 'fail',
+                body: (
+                  <>
+                    Anyone on the internet can <InlineCode>POST</InlineCode> to your <InlineCode>/webhook</InlineCode> URL pretending to be
+                    Stripe. <em>Verify the HMAC signature before doing any work</em> — recompute{' '}
+                    <InlineCode>HMAC-SHA256(secret, timestamp + "." + raw_body)</InlineCode> and constant-time compare. Verify on the{' '}
+                    <em>raw bytes</em>, not the re-serialized JSON — key reordering changes the hash.
+                  </>
+                ),
+              },
+              {
+                label: 'Signature alone doesn\'t stop replay',
+                tone: 'warn',
+                body: (
+                  <>
+                    A valid past payload, captured and re-sent, has a valid signature. That's why the timestamp is signed too: reject if
+                    drift &gt; ~5 min. The timestamp inside the signed region can't be tampered without breaking the signature.
+                  </>
+                ),
+              },
+              {
+                label: 'Return 2xx fast, process async',
+                tone: 'a',
+                body: (
+                  <>
+                    Do the signature check, enqueue, return 200 in milliseconds. If you do the real work inline and it takes 30s, the
+                    sender times out, marks it failed, and retries — now you're processing a slow job twice. Ack-then-work, never
+                    work-then-ack.
+                  </>
+                ),
+              },
+              {
+                label: 'Sending side',
+                tone: 'b',
+                body: (
+                  <>
+                    Sign every payload, include a timestamp and an idempotency key, retry non-2xx with backoff + jitter, dead-letter
+                    after N attempts. Document the scheme like Stripe (<InlineCode>Stripe-Signature</InlineCode>) or GitHub (
+                    <InlineCode>X-Hub-Signature-256</InlineCode>) so receivers can verify.
+                  </>
+                ),
+              },
             ]}
           />
-          <WebhookSignatureDemo />
         </TopicCard>
+        <Compare
+          items={[
+            {
+              label: 'Webhook — timely, push',
+              tone: 'a',
+              body: (
+                <>
+                  The provider tells you the instant something happens — no wasted polls, low latency. But a webhook is a single delivery
+                  attempt over a flaky network: your endpoint was down for a deploy, the retry budget ran out, the event is silently
+                  lost. You cannot assume every webhook arrives.
+                </>
+              ),
+            },
+            {
+              label: 'Reconciliation poll — the safety net',
+              tone: 'b',
+              body: (
+                <>
+                  A periodic job that lists "events since last cursor" from the provider's API and fills gaps the webhooks missed. Slow
+                  but complete. Webhook for speed, poll for completeness — production payment systems run both, and the poll is what
+                  catches the dropped <InlineCode>payment_intent.succeeded</InlineCode>.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">Webhook vs polling — and why you need both</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-cyan-400/30 bg-cyan-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-cyan-300">Webhook — timely, push</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                The provider tells you the instant something happens — no wasted polls, low latency. But a webhook is a single delivery attempt over a flaky network: your endpoint was down for a deploy, the retry budget ran out, the event is silently lost. You cannot assume every webhook arrives.
-              </p>
-            </div>
-            <div className="rounded-xl border border-violet-400/30 bg-violet-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-violet-300">Reconciliation poll — the safety net</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A periodic job that lists "events since last cursor" from the provider's API and fills gaps the webhooks missed. Slow but complete. Webhook for speed, poll for completeness — production payment systems run both, and the poll is what catches the dropped <InlineCode>payment_intent.succeeded</InlineCode>.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            The mental model: a webhook is a best-effort notification, not a guaranteed message bus. Build the happy path on webhooks, build the audit/recovery path on a poll, and make both idempotent so running them over the same event is a no-op.
+          <h4 className="mb-2 font-semibold">The mental model — best-effort notification, not a message bus</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            A webhook is a best-effort notification, not a guaranteed message bus. Build the happy path on webhooks, build the
+            audit/recovery path on a poll, and make both idempotent so running them over the same event is a no-op.
           </p>
         </Card>
       </Section>
@@ -203,16 +465,60 @@ console.log('challenge (send in /authorize):', challenge);
           title="Pick the smallest hammer"
           description="Most 'real-time' features ship fine on SSE or smart polling. Reach for WebSockets when you need bi-directional streams or sub-second latency."
         >
-          <Bullets
+          <RealtimeComparator />
+          <Compare
             items={[
-              <><strong>SSE is one-way over plain HTTP</strong> — a long-lived <InlineCode>text/event-stream</InlineCode> response. It gets auto-reconnect and a <InlineCode>Last-Event-ID</InlineCode> resume cursor <em>for free</em>, and rides through proxies, CDNs, and HTTP/2 like any other request. The cost: server→client only, text only, and on HTTP/1.1 it eats one of the browser's ~6 connections per origin (HTTP/2 multiplexing removes that).</>,
-              <><strong>WebSockets are bi-directional and stateful</strong> — and stateful is the word that costs you. The connection lives on one server process. Scale past one box and you've signed up for sticky sessions <em>or</em> a pub/sub fan-out layer (Redis, NATS) so a message published on server B reaches a client pinned to server A. That infra is the real price, not the protocol.</>,
-              <><strong>Polling's failure mode is waste, not breakage.</strong> 10k clients polling every 5s = 2k req/s of mostly-304s, burning bandwidth and mobile battery. It's the <em>right</em> call when data changes on the order of minutes — no connection state, no fan-out layer, trivially cacheable. Don't reach for a socket to avoid a poll that was fine.</>,
-              <><strong>Reconnection is the part demos skip.</strong> Connections drop — laptop sleeps, wifi switches, load balancer recycles. SSE reconnects itself and replays from <InlineCode>Last-Event-ID</InlineCode>; with WebSockets you build reconnect-with-backoff and a resume protocol yourself, or the client silently goes stale and the user sees frozen data with no error.</>,
-              <><strong>The common mistake: WebSockets to push a notification.</strong> A one-way server→client event — "your export is ready", a feed update — is exactly SSE's job. Choosing WebSockets there buys you the sticky-session/fan-out tax for a capability you never use.</>,
+              {
+                label: 'SSE — one-way over plain HTTP',
+                tone: 'a',
+                body: (
+                  <>
+                    A long-lived <InlineCode>text/event-stream</InlineCode> response. It gets auto-reconnect and a{' '}
+                    <InlineCode>Last-Event-ID</InlineCode> resume cursor <em>for free</em>, and rides through proxies, CDNs, and HTTP/2
+                    like any other request. The cost: server→client only, text only, and on HTTP/1.1 it eats one of the browser's ~6
+                    connections per origin (HTTP/2 multiplexing removes that).
+                  </>
+                ),
+              },
+              {
+                label: 'WebSockets — bi-directional and stateful',
+                tone: 'b',
+                body: (
+                  <>
+                    Stateful is the word that costs you. The connection lives on one server process. Scale past one box and you've signed
+                    up for sticky sessions <em>or</em> a pub/sub fan-out layer (Redis, NATS) so a message published on server B reaches a
+                    client pinned to server A. That infra is the real price, not the protocol.
+                  </>
+                ),
+              },
+              {
+                label: 'Polling — failure mode is waste, not breakage',
+                tone: 'warn',
+                body: (
+                  <>
+                    10k clients polling every 5s = 2k req/s of mostly-304s, burning bandwidth and mobile battery. It's the <em>right</em>{' '}
+                    call when data changes on the order of minutes — no connection state, no fan-out layer, trivially cacheable. Don't
+                    reach for a socket to avoid a poll that was fine.
+                  </>
+                ),
+              },
             ]}
           />
-          <RealtimeComparator />
+          <Card>
+            <h4 className="mb-2 font-semibold">Reconnection is the part demos skip</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Connections drop — laptop sleeps, wifi switches, load balancer recycles. SSE reconnects itself and replays from{' '}
+              <InlineCode>Last-Event-ID</InlineCode>; with WebSockets you build reconnect-with-backoff and a resume protocol yourself, or
+              the client silently goes stale and the user sees frozen data with no error.
+            </p>
+          </Card>
+          <Card>
+            <h4 className="mb-2 font-semibold">The common mistake: WebSockets to push a notification</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              A one-way server→client event — "your export is ready", a feed update — is exactly SSE's job. Choosing WebSockets there
+              buys you the sticky-session/fan-out tax for a capability you never use.
+            </p>
+          </Card>
         </TopicCard>
       </Section>
 
@@ -223,36 +529,101 @@ console.log('challenge (send in /authorize):', challenge);
           title="Why your transactional emails go to spam"
           description="Three TXT records in DNS decide whether Gmail trusts your domain. Get the trio right and inbox placement jumps overnight."
         >
-          <Bullets
-            items={[
-              <><strong>SPF answers "is this server allowed to send as me?"</strong> — a DNS TXT list of permitted IPs/includes. It checks the SMTP envelope sender, <em>not</em> the visible <InlineCode>From:</InlineCode>, so it breaks on forwarding (the forwarder's IP isn't on your list). Prefer <InlineCode>-all</InlineCode> (hard fail) over <InlineCode>~all</InlineCode> (soft fail); and SPF has a hard 10-DNS-lookup limit — chain too many <InlineCode>include:</InlineCode>s and the whole record silently fails.</>,
-              <><strong>DKIM answers "was this message tampered with in transit?"</strong> — the sending server signs headers + body with a private key; receivers verify against a public key in your DNS. Because the signature travels <em>with</em> the message, DKIM survives forwarding where SPF doesn't. The provider usually manages key rotation.</>,
-              <><strong>DMARC ties the two to the visible From and sets policy.</strong> It requires SPF <em>or</em> DKIM to pass <em>and</em> align with the <InlineCode>From:</InlineCode> domain — that alignment check is what actually stops spoofing. It also tells receivers what to do on failure and where to send aggregate reports.</>,
-              <><strong>The rollout failure mode: jumping straight to <InlineCode>p=reject</InlineCode>.</strong> If a legitimate sender (your CRM, a support tool, your own staging box) isn't covered yet, <InlineCode>reject</InlineCode> bins their mail instantly. Roll out <InlineCode>p=none</InlineCode> (monitor, read the reports) → <InlineCode>quarantine</InlineCode> → <InlineCode>reject</InlineCode>, weeks apart, only advancing once reports are clean.</>,
-              <><strong>Auth gets you delivered, not trusted.</strong> Passing SPF/DKIM/DMARC means you're <em>allowed</em> in — reputation (engagement, complaint rate, bounce rate) decides inbox vs spam folder. The records are necessary, not sufficient.</>,
-            ]}
-          />
           <EmailAuthExplainer />
           <DeliverabilityChecklist />
+          <Compare
+            items={[
+              {
+                label: 'SPF — "is this server allowed to send as me?"',
+                tone: 'a',
+                body: (
+                  <>
+                    A DNS TXT list of permitted IPs/includes. It checks the SMTP envelope sender, <em>not</em> the visible{' '}
+                    <InlineCode>From:</InlineCode>, so it breaks on forwarding (the forwarder's IP isn't on your list). Prefer{' '}
+                    <InlineCode>-all</InlineCode> (hard fail) over <InlineCode>~all</InlineCode> (soft fail); and SPF has a hard
+                    10-DNS-lookup limit — chain too many <InlineCode>include:</InlineCode>s and the whole record silently fails.
+                  </>
+                ),
+              },
+              {
+                label: 'DKIM — "was this message tampered with in transit?"',
+                tone: 'b',
+                body: (
+                  <>
+                    The sending server signs headers + body with a private key; receivers verify against a public key in your DNS.
+                    Because the signature travels <em>with</em> the message, DKIM survives forwarding where SPF doesn't. The provider
+                    usually manages key rotation.
+                  </>
+                ),
+              },
+              {
+                label: 'DMARC — ties the two to the visible From, sets policy',
+                tone: 'c',
+                body: (
+                  <>
+                    It requires SPF <em>or</em> DKIM to pass <em>and</em> align with the <InlineCode>From:</InlineCode> domain — that
+                    alignment check is what actually stops spoofing. It also tells receivers what to do on failure and where to send
+                    aggregate reports.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Steps
+            steps={[
+              { label: 'set p=reject on day one' },
+              { label: 'a legit sender (CRM / support tool / staging box) isn\'t covered yet' },
+              { label: 'their mail fails alignment' },
+              { label: 'receivers bin it instantly', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <strong>The rollout failure mode: jumping straight to <InlineCode>p=reject</InlineCode>.</strong> Roll out{' '}
+                <InlineCode>p=none</InlineCode> (monitor, read the reports) → <InlineCode>quarantine</InlineCode> →{' '}
+                <InlineCode>reject</InlineCode>, weeks apart, only advancing once reports are clean.
+              </>
+            }
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">Auth gets you delivered, not trusted</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Passing SPF/DKIM/DMARC means you're <em>allowed</em> in — reputation (engagement, complaint rate, bounce rate) decides
+              inbox vs spam folder. The records are necessary, not sufficient.
+            </p>
+          </Card>
         </TopicCard>
+        <Compare
+          items={[
+            {
+              label: 'Shared IP — under ~50k/month',
+              tone: 'c',
+              body: (
+                <>
+                  You sit on the provider's pool, riding their already-warm reputation. Low volume on a dedicated IP is actually{' '}
+                  <em>worse</em> — receivers distrust an IP with no consistent history, and a trickle never builds one. The risk: a bad
+                  neighbour on the pool can dent your placement, but reputable providers police this hard.
+                </>
+              ),
+            },
+            {
+              label: 'Dedicated IP — high, steady volume',
+              tone: 'warn',
+              body: (
+                <>
+                  Above ~50k/month <em>and</em> consistent: your reputation is yours alone, no neighbours. But you must warm it slowly
+                  (≈50 → 1k/day over weeks) or receivers throttle the sudden volume, and if you can't keep the volume steady the
+                  reputation decays between sends.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">Shared vs dedicated sending IP — when each</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Shared IP — under ~50k/month</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                You sit on the provider's pool, riding their already-warm reputation. Low volume on a dedicated IP is actually <em>worse</em> — receivers distrust an IP with no consistent history, and a trickle never builds one. The risk: a bad neighbour on the pool can dent your placement, but reputable providers police this hard.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Dedicated IP — high, steady volume</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Above ~50k/month <em>and</em> consistent: your reputation is yours alone, no neighbours. But you must warm it slowly (≈50 → 1k/day over weeks) or receivers throttle the sudden volume, and if you can't keep the volume steady the reputation decays between sends.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            And isolate by purpose: send transactional mail from a dedicated subdomain (<InlineCode>mail.app.com</InlineCode>) so a marketing-campaign complaint spike never drags your password-reset emails into the spam folder. Reputation is scoped to the domain — don't pool the critical mail with the risky mail.
+          <h4 className="mb-2 font-semibold">Isolate by purpose — don't pool critical mail with risky mail</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Send transactional mail from a dedicated subdomain (<InlineCode>mail.app.com</InlineCode>) so a marketing-campaign complaint
+            spike never drags your password-reset emails into the spam folder. Reputation is scoped to the domain — don't pool the
+            critical mail with the risky mail.
           </p>
         </Card>
       </Section>
@@ -264,16 +635,69 @@ console.log('challenge (send in /authorize):', challenge);
           title="Idempotency keys, webhooks, PCI scope"
           description="Take payments on the client with Stripe Elements; never let card numbers touch your server (PCI scope explosion). Use idempotency keys on every charge — payment retries are unforgiving."
         >
-          <Bullets
+          <StripeFlow />
+          <Steps
+            steps={[
+              { label: 'charge call keyed with Date.now()' },
+              { label: 'call times out — Stripe actually processed it' },
+              { label: 'code retries, gets a fresh Date.now() key', tone: 'fail' },
+              { label: 'Stripe sees a new key → second real charge', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <strong>The idempotency key must be a business event ID, not <InlineCode>Date.now()</InlineCode>.</strong> The whole point
+                is that a <em>retry</em> reuses the <em>same</em> key so Stripe returns the original charge instead of making a second
+                one. Use <InlineCode>order_&lt;id&gt;_charge</InlineCode>: stable across retries, unique across orders.
+              </>
+            }
+          />
+          <Compare
             items={[
-              <><strong>Card data never touches your origin.</strong> Stripe.js / Elements tokenizes the PAN in the browser; your server only ever sees a <InlineCode>pm_xxx</InlineCode> handle. That single decision keeps you at PCI scope <InlineCode>SAQ A</InlineCode> (a short self-assessment) instead of a full audit — the moment a raw card number hits your logs or DB, your compliance scope explodes.</>,
-              <><strong>The idempotency key must be a business event ID, not <InlineCode>Date.now()</InlineCode>.</strong> The whole point is that a <em>retry</em> reuses the <em>same</em> key so Stripe returns the original charge instead of making a second one. <InlineCode>Date.now()</InlineCode> is different on every call — the retry gets a fresh key and you double-charge. Use <InlineCode>order_&lt;id&gt;_charge</InlineCode>: stable across retries, unique across orders.</>,
-              <><strong>Webhooks are the source of truth, not the redirect.</strong> The post-payment browser redirect can be lost — user closes the tab, network drops, mobile backgrounds the app. The order would then be paid at Stripe but never marked paid in your DB. <InlineCode>payment_intent.succeeded</InlineCode> (verified signature) is what flips the order to paid and enqueues fulfilment.</>,
-              <><strong>That webhook handler must be idempotent too.</strong> Stripe delivers at-least-once — the same <InlineCode>payment_intent.succeeded</InlineCode> can arrive twice. Mark-paid-and-fulfil keyed to the payment intent ID, behind a unique constraint, or the customer gets shipped twice off one payment.</>,
-              <><strong>Don't build 3DS / SCA yourself.</strong> The <InlineCode>requires_action</InlineCode> state and the bank challenge UI are handled by Stripe.js. Your job is to react to the resulting webhook, not to reimplement the card-network flow.</>,
+              {
+                label: 'Card data never touches your origin',
+                tone: 'a',
+                body: (
+                  <>
+                    Stripe.js / Elements tokenizes the PAN in the browser; your server only ever sees a <InlineCode>pm_xxx</InlineCode>{' '}
+                    handle. That single decision keeps you at PCI scope <InlineCode>SAQ A</InlineCode> (a short self-assessment) instead of
+                    a full audit — the moment a raw card number hits your logs or DB, your compliance scope explodes.
+                  </>
+                ),
+              },
+              {
+                label: 'Webhooks are the source of truth, not the redirect',
+                tone: 'b',
+                body: (
+                  <>
+                    The post-payment browser redirect can be lost — user closes the tab, network drops, mobile backgrounds the app. The
+                    order would then be paid at Stripe but never marked paid in your DB. <InlineCode>payment_intent.succeeded</InlineCode>{' '}
+                    (verified signature) is what flips the order to paid and enqueues fulfilment.
+                  </>
+                ),
+              },
+              {
+                label: 'That webhook handler must be idempotent too',
+                tone: 'warn',
+                body: (
+                  <>
+                    Stripe delivers at-least-once — the same <InlineCode>payment_intent.succeeded</InlineCode> can arrive twice.
+                    Mark-paid-and-fulfil keyed to the payment intent ID, behind a unique constraint, or the customer gets shipped twice
+                    off one payment.
+                  </>
+                ),
+              },
+              {
+                label: 'Don\'t build 3DS / SCA yourself',
+                tone: 'c',
+                body: (
+                  <>
+                    The <InlineCode>requires_action</InlineCode> state and the bank challenge UI are handled by Stripe.js. Your job is to
+                    react to the resulting webhook, not to reimplement the card-network flow.
+                  </>
+                ),
+              },
             ]}
           />
-          <StripeFlow />
           <CodePlayground
             mode="js"
             height={220}
@@ -299,24 +723,38 @@ console.log('Even if this runs 3× because of a retry,');
 console.log('Stripe charges exactly once. Use the order ID, not Date.now().');`}
           />
         </TopicCard>
+        <Compare
+          items={[
+            {
+              label: 'Double charge from a retry',
+              tone: 'fail',
+              body: (
+                <>
+                  Your <InlineCode>POST /payment_intents</InlineCode> call times out — but Stripe actually processed it; you just never
+                  got the response. Your code retries. Without a stable idempotency key, that's a second real charge. With one, Stripe
+                  recognizes the key and returns the original intent. This is the at-least-once duplicate bug from L12.3, with money
+                  attached.
+                </>
+              ),
+            },
+            {
+              label: 'Paid at Stripe, unpaid in your DB',
+              tone: 'warn',
+              body: (
+                <>
+                  You marked the order paid on the success redirect. The redirect was lost. Now the customer was charged and has nothing
+                  — a support ticket and a refund. The fix is structural: the verified webhook is the only thing that flips the order
+                  state, and a reconciliation poll catches any webhook that was itself dropped.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">The two payment failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Double charge from a retry</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Your <InlineCode>POST /payment_intents</InlineCode> call times out — but Stripe actually processed it; you just never got the response. Your code retries. Without a stable idempotency key, that's a second real charge. With one, Stripe recognizes the key and returns the original intent. This is the at-least-once duplicate bug from L12.3, with money attached.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Paid at Stripe, unpaid in your DB</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                You marked the order paid on the success redirect. The redirect was lost. Now the customer was charged and has nothing — a support ticket and a refund. The fix is structural: the verified webhook is the only thing that flips the order state, and a reconciliation poll catches any webhook that was itself dropped.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Both failure modes come from treating an unreliable channel (an HTTP response, a browser redirect) as reliable. Idempotency keys make the charge safe to repeat; webhooks-as-truth makes the fulfilment safe to miss-and-recover.
+          <h4 className="mb-2 font-semibold">Both come from trusting an unreliable channel</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Both failure modes come from treating an unreliable channel (an HTTP response, a browser redirect) as reliable. Idempotency
+            keys make the charge safe to repeat; webhooks-as-truth makes the fulfilment safe to miss-and-recover.
           </p>
         </Card>
       </Section>
@@ -328,18 +766,66 @@ console.log('Stripe charges exactly once. Use the order ID, not Date.now().');`}
           title="The bug magnets"
           description="UTC always in storage. Integers (cents) for money. Plurals are not 'add s'. Time zones are political, not mathematical."
         >
-          <Bullets
-            items={[
-              <><strong>Store UTC + the IANA timezone <em>name</em>, never a GMT offset.</strong> An offset like <InlineCode>+07:00</InlineCode> is a fact about one instant, not a place — DST means the same location shifts offset twice a year. Store <InlineCode>Asia/Bangkok</InlineCode> and convert at display, or a recurring "9am meeting" silently moves an hour when the clocks change.</>,
-              <><strong>Floats can't represent most decimals.</strong> <InlineCode>0.1 + 0.2 === 0.30000000000000004</InlineCode> — base-2 can't hold 0.1 exactly, and the error compounds over a sum of line items. Store money as integers in the smallest unit (cents), do all arithmetic there, format only at display. Stripe does exactly this — match it.</>,
-              <><strong>A bare amount is half a value.</strong> <InlineCode>1000</InlineCode> is meaningless without a currency — and the smallest unit isn't universal: JPY has no minor unit (¥1000 = <InlineCode>1000</InlineCode>), KWD has three decimals (<InlineCode>1000</InlineCode> = 1 dinar). Carry <InlineCode>{`{ amount, currency }`}</InlineCode> together as one Money type, or you've planted a second bug class.</>,
-              <><strong>Plurals are not "add s".</strong> Russian has one/few/many, Arabic has six forms, Japanese has none. <InlineCode>count + " items"</InlineCode> is unfixable for translators. Use <InlineCode>Intl.PluralRules</InlineCode> + ICU MessageFormat so the <em>language</em> decides the form, not your string concat.</>,
-              <><strong>These pass every demo.</strong> The developer, the test data, and the reviewer are all in one timezone, one currency, one language — so the bug only fires for a real user somewhere else. That's what makes this class insidious: it's invisible until it's a production incident for someone you can't reproduce.</>,
-            ]}
-          />
           <TimeZoneDemo />
           <MoneyMath />
           <PluralRules />
+          <Compare
+            items={[
+              {
+                label: 'Time — store UTC + IANA name, never a GMT offset',
+                tone: 'a',
+                body: (
+                  <>
+                    An offset like <InlineCode>+07:00</InlineCode> is a fact about one instant, not a place — DST means the same location
+                    shifts offset twice a year. Store <InlineCode>Asia/Bangkok</InlineCode> and convert at display, or a recurring "9am
+                    meeting" silently moves an hour when the clocks change.
+                  </>
+                ),
+              },
+              {
+                label: 'Money — integers in the smallest unit, never floats',
+                tone: 'b',
+                body: (
+                  <>
+                    <InlineCode>0.1 + 0.2 === 0.30000000000000004</InlineCode> — base-2 can't hold 0.1 exactly, and the error compounds
+                    over a sum of line items. Store money as integers in the smallest unit (cents), do all arithmetic there, format only
+                    at display. Stripe does exactly this — match it.
+                  </>
+                ),
+              },
+              {
+                label: 'Units — a bare amount is half a value',
+                tone: 'c',
+                body: (
+                  <>
+                    <InlineCode>1000</InlineCode> is meaningless without a currency — and the smallest unit isn't universal: JPY has no
+                    minor unit (¥1000 = <InlineCode>1000</InlineCode>), KWD has three decimals (<InlineCode>1000</InlineCode> = 1 dinar).
+                    Carry <InlineCode>{`{ amount, currency }`}</InlineCode> together as one Money type, or you've planted a second bug
+                    class.
+                  </>
+                ),
+              },
+              {
+                label: 'i18n — plurals are not "add s"',
+                tone: 'warn',
+                body: (
+                  <>
+                    Russian has one/few/many, Arabic has six forms, Japanese has none. <InlineCode>count + " items"</InlineCode> is
+                    unfixable for translators. Use <InlineCode>Intl.PluralRules</InlineCode> + ICU MessageFormat so the <em>language</em>{' '}
+                    decides the form, not your string concat.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">Why this class is insidious — it passes every demo</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              The developer, the test data, and the reviewer are all in one timezone, one currency, one language — so the bug only fires
+              for a real user somewhere else. That's what makes this class insidious: it's invisible until it's a production incident for
+              someone you can't reproduce.
+            </p>
+          </Card>
         </TopicCard>
       </Section>
 

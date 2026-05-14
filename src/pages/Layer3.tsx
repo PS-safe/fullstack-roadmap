@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Network, Play, Pause, RotateCcw, Globe } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat } from '../components/UI';
+import { Section, TopicCard, InlineCode, Card, Stat, Compare, Steps } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
 import { cn } from '../lib/cn';
@@ -19,28 +19,91 @@ export default function Layer3() {
           index={0}
           title="Seven layers, each adding a header"
           description="The OSI model isn't a thing that runs — it's a debugging coordinate system. Its real value: when something breaks, it tells you which layer to inspect so you stop guessing."
-        >
-          <Bullets
-            items={[
-              <>L7 Application — HTTP, gRPC, WebSocket, DNS. The only layer your code usually touches. Symptom here: 500s, wrong status codes, malformed JSON.</>,
-              <>L4 Transport — TCP (ordered, reliable, connection) vs UDP (datagram, fire-and-forget). Identified by <strong>port</strong>. Symptom here: connection refused (nothing listening), connection timeout (firewall dropped the SYN).</>,
-              <>L3 Network — IP routes packets hop-to-hop across networks; identified by <strong>IP address</strong>. Symptom here: "no route to host", asymmetric routing, MTU black holes.</>,
-              <>L2 Data Link — Ethernet/Wi-Fi frames inside one network segment; identified by <strong>MAC address</strong>. ARP maps L3→L2. Symptom here: duplicate IP, ARP poisoning, switch loop.</>,
-              <>Encapsulation is why a captured packet is an onion: <InlineCode>Ethernet[ IP[ TCP[ TLS[ HTTP ] ] ] ]</InlineCode>. Each layer reads only its own header and hands the payload up — that's the whole abstraction.</>,
-              <>The TCP/IP model the internet actually runs collapses L5–L7 into one "Application" layer. L5/L6 (Session, Presentation) were never cleanly real — TLS spans "L6-ish" but is implemented in the app. Don't over-index on the magic number 7.</>,
-            ]}
-          />
-        </TopicCard>
+        />
+        <OSIEncapsulation />
+        <Compare
+          items={[
+            {
+              label: 'L7 Application',
+              tone: 'fail',
+              body: (
+                <>
+                  HTTP, gRPC, WebSocket, DNS. The only layer your code usually touches. Symptom here: 500s, wrong status codes,
+                  malformed JSON.
+                </>
+              ),
+            },
+            {
+              label: 'L4 Transport',
+              tone: 'c',
+              body: (
+                <>
+                  TCP (ordered, reliable, connection) vs UDP (datagram, fire-and-forget). Identified by <strong>port</strong>. Symptom
+                  here: connection refused (nothing listening), connection timeout (firewall dropped the SYN).
+                </>
+              ),
+            },
+            {
+              label: 'L3 Network',
+              tone: 'a',
+              body: (
+                <>
+                  IP routes packets hop-to-hop across networks; identified by <strong>IP address</strong>. Symptom here: "no route to
+                  host", asymmetric routing, MTU black holes.
+                </>
+              ),
+            },
+            {
+              label: 'L2 Data Link',
+              tone: 'b',
+              body: (
+                <>
+                  Ethernet/Wi-Fi frames inside one network segment; identified by <strong>MAC address</strong>. ARP maps L3→L2.
+                  Symptom here: duplicate IP, ARP poisoning, switch loop.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">Why the layer model earns its keep</h4>
+          <h4 className="mb-2 font-semibold">Encapsulation — the packet is an onion</h4>
           <p className="text-[13px] leading-relaxed text-ink-dim">
-            "The site is down" is not a diagnosis. The layer model turns it into a binary search. Can you <InlineCode>ping</InlineCode> the host? L3 works. Can you <InlineCode>nc -vz host 443</InlineCode>? L4 works — something is listening and the firewall lets you in. Does <InlineCode>curl -v https://host</InlineCode> complete the TLS handshake? Then your problem is L7 — the app — and you've ruled out three layers in thirty seconds.
-          </p>
-          <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-            The trap: assuming the symptom's layer is the cause's layer. An HTTP 504 (L7) is usually an L7 upstream that's slow — but an identical-looking hang can be an L3 MTU black hole silently dropping large packets. Walk the layers; don't pattern-match the error string.
+            Encapsulation is why a captured packet is an onion: <InlineCode>Ethernet[ IP[ TCP[ TLS[ HTTP ] ] ] ]</InlineCode>. Each
+            layer reads only its own header and hands the payload up — that's the whole abstraction. The TCP/IP model the internet
+            actually runs collapses L5–L7 into one "Application" layer; L5/L6 (Session, Presentation) were never cleanly real — TLS
+            spans "L6-ish" but is implemented in the app. Don't over-index on the magic number 7.
           </p>
         </Card>
-        <OSIEncapsulation />
+        <Steps
+          steps={[
+            { label: 'ping host', tone: 'ok' },
+            { label: 'nc -vz host 443', tone: 'ok' },
+            { label: 'curl -v https://host completes TLS', tone: 'ok' },
+            { label: 'problem is L7 — the app' },
+          ]}
+          caption={
+            <>
+              <strong>Why the layer model earns its keep.</strong> "The site is down" is not a diagnosis — the layer model turns it
+              into a binary search. Can you <InlineCode>ping</InlineCode> the host? L3 works. Can you <InlineCode>nc -vz host 443</InlineCode>?
+              L4 works — something is listening and the firewall lets you in. Does <InlineCode>curl -v https://host</InlineCode> complete
+              the TLS handshake? Then your problem is L7 — the app — and you've ruled out three layers in thirty seconds.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: 'HTTP 504 — looks like L7' },
+            { label: 'you debug the upstream app' },
+            { label: 'real cause: L3 MTU black hole', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">The trap:</strong> assuming the symptom's layer is the cause's layer. An HTTP 504 (L7)
+              is usually an L7 upstream that's slow — but an identical-looking hang can be an L3 MTU black hole silently dropping large
+              packets. Walk the layers; don't pattern-match the error string.
+            </>
+          }
+        />
       </Section>
 
       <Section id="ip" kicker="3.2" title="IP Addressing & Subnetting">
@@ -49,19 +112,92 @@ export default function Layer3() {
           index={1}
           title="CIDR, masks, and the math behind /24"
           description="A subnet mask carves an IP into network bits and host bits. /24 = first 24 bits identify the network, last 8 identify the host: 256 addresses, but 254 usable — .0 is the network ID, .255 is broadcast, neither is assignable."
-        >
-          <Bullets
-            items={[
-              <>Smaller prefix = bigger network. <InlineCode>/24</InlineCode> is 256 addrs, <InlineCode>/16</InlineCode> is 65,536, <InlineCode>/8</InlineCode> is 16M. Every bit you give the network halves the host space. <InlineCode>/31</InlineCode> and <InlineCode>/32</InlineCode> skip the network/broadcast reservation (point-to-point links, single host).</>,
-              <>Private RFC 1918 ranges — <InlineCode>10/8</InlineCode>, <InlineCode>172.16/12</InlineCode>, <InlineCode>192.168/16</InlineCode> — are not internet-routable. The why: they let everyone reuse the same address space behind NAT, which is what postponed IPv4 exhaustion for two decades.</>,
-              <>NAT rewrites the source IP+port of outbound packets and keeps a translation table to reverse it on the reply (SNAT/masquerade). Cost: it's <em>stateful</em> — the table has finite size and entries expire, which is why a long-idle TCP connection behind NAT silently dies (the mapping was evicted; you only find out on the next send). DNAT/port-forwarding is the inbound direction.</>,
-              <>Same private range on both ends of a VPN = overlapping subnets, and routing becomes ambiguous. This is the single most common reason a site-to-site VPN "connects" but no traffic flows — pick non-default ranges (<InlineCode>10.{'{'}random{'}'}.0.0/24</InlineCode>) for anything you might later bridge.</>,
-              <>IPv6 is 128 bits — no NAT needed, every device globally addressable. <InlineCode>::1</InlineCode> is loopback, <InlineCode>fe80::/10</InlineCode> is link-local (auto-configured, not routed). A host with both stacks prefers IPv6; a broken IPv6 path causes the classic "slow for 20s then works" bug as it times out and falls back to v4 (Happy Eyeballs mitigates this).</>,
-              <>DHCP DORA — Discover → Offer → Request → Acknowledge — is a broadcast conversation because the client has no IP yet. The lease has a duration; a client renews at 50%. Relevant failure: two DHCP servers on one LAN hand out conflicting leases → intermittent duplicate-IP outages.</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <SubnetCalculator />
+        <Compare
+          items={[
+            {
+              label: '/24 — 256 addresses',
+              tone: 'a',
+              body: (
+                <>
+                  Smaller prefix = bigger network. <InlineCode>/24</InlineCode> is 256 addrs, <InlineCode>/16</InlineCode> is 65,536,{' '}
+                  <InlineCode>/8</InlineCode> is 16M. Every bit you give the network halves the host space.
+                </>
+              ),
+            },
+            {
+              label: '/16 — 65,536 addresses',
+              tone: 'b',
+              body: (
+                <>
+                  Each step from <InlineCode>/24</InlineCode> to <InlineCode>/16</InlineCode> to <InlineCode>/8</InlineCode> moves 8 bits
+                  from host to network — multiplying host space by 256 each time.
+                </>
+              ),
+            },
+            {
+              label: '/31 & /32 — no reservation',
+              tone: 'c',
+              body: (
+                <>
+                  <InlineCode>/31</InlineCode> and <InlineCode>/32</InlineCode> skip the network/broadcast reservation — used for
+                  point-to-point links and single hosts respectively.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Private ranges &amp; NAT — how IPv4 didn't run out</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Private RFC 1918 ranges — <InlineCode>10/8</InlineCode>, <InlineCode>172.16/12</InlineCode>,{' '}
+            <InlineCode>192.168/16</InlineCode> — are not internet-routable. The why: they let everyone reuse the same address space
+            behind NAT, which is what postponed IPv4 exhaustion for two decades. NAT rewrites the source IP+port of outbound packets
+            and keeps a translation table to reverse it on the reply (SNAT/masquerade). Cost: it's <em>stateful</em> — the table has
+            finite size and entries expire, which is why a long-idle TCP connection behind NAT silently dies (the mapping was evicted;
+            you only find out on the next send). DNAT/port-forwarding is the inbound direction.
+          </p>
+        </Card>
+        <Steps
+          steps={[
+            { label: 'both VPN ends use 192.168.1.0/24' },
+            { label: 'overlapping subnets' },
+            { label: 'routing is ambiguous' },
+            { label: 'VPN "connects" but no traffic flows', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              Same private range on both ends of a VPN = overlapping subnets, and routing becomes ambiguous. This is the single most
+              common reason a site-to-site VPN "connects" but no traffic flows — pick non-default ranges (
+              <InlineCode>10.{'{'}random{'}'}.0.0/24</InlineCode>) for anything you might later bridge.
+            </>
+          }
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">IPv6 — 128 bits, no NAT</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            IPv6 is 128 bits — no NAT needed, every device globally addressable. <InlineCode>::1</InlineCode> is loopback,{' '}
+            <InlineCode>fe80::/10</InlineCode> is link-local (auto-configured, not routed). A host with both stacks prefers IPv6; a
+            broken IPv6 path causes the classic "slow for 20s then works" bug as it times out and falls back to v4 (Happy Eyeballs
+            mitigates this).
+          </p>
+        </Card>
+        <Steps
+          steps={[
+            { label: 'client has no IP — broadcasts Discover' },
+            { label: 'server sends Offer' },
+            { label: 'client sends Request' },
+            { label: 'server sends Acknowledge', tone: 'ok' },
+          ]}
+          caption={
+            <>
+              <strong>DHCP DORA.</strong> Discover → Offer → Request → Acknowledge is a broadcast conversation because the client has
+              no IP yet. The lease has a duration; a client renews at 50%. Relevant failure: two DHCP servers on one LAN hand out
+              conflicting leases → intermittent duplicate-IP outages.
+            </>
+          }
+        />
       </Section>
 
       <Section id="tcpudp" kicker="3.3" title="TCP vs UDP">
@@ -70,43 +206,102 @@ export default function Layer3() {
           index={2}
           title="Reliability vs latency"
           description="TCP gives you an ordered, reliable byte stream — at the cost of a handshake and head-of-line blocking. UDP gives you unordered datagrams and gets out of your way. The choice is: who handles loss — the kernel, or you?"
-        >
-          <Bullets
-            items={[
-              <>TCP's guarantees aren't free magic — they're mechanism. <strong>Sequence numbers</strong> let the receiver reorder and detect gaps; <strong>ACKs</strong> trigger retransmission of anything unacknowledged; the <strong>sliding window</strong> bounds in-flight data; <strong>congestion control</strong> (CUBIC default, BBR newer) probes for bandwidth and backs off on loss. Every one of these adds latency you can sometimes feel.</>,
-              <>Head-of-line blocking is TCP's defining cost: it's <em>one</em> byte stream, so a single lost segment stalls delivery of <em>everything</em> sent after it until the retransmit arrives — even data that's already in the receiver's buffer. On a lossy mobile link this is why a page with one stuck asset feels frozen.</>,
-              <>UDP is an 8-byte header and nothing else — no handshake, no state, no ordering, no retransmit. If a datagram is lost, it's just gone, and the app never hears about it. That's a feature for DNS (just ask again), NTP, and real-time media/gaming (a 200ms-old position update is worthless — you want the <em>next</em> one, not the lost one redelivered).</>,
-              <>QUIC (the transport under HTTP/3) is the synthesis: reliable, ordered <em>streams</em> built in userspace on top of UDP. Multiple independent streams mean a lost packet only stalls its own stream, not the others — it kills TCP's HOL blocking. It also folds the TLS handshake into the transport handshake (1-RTT, or 0-RTT on resumption) and survives IP changes via a connection ID, which is why it's a real win on mobile.</>,
-            ]}
-          />
-        </TopicCard>
+        />
+        <TcpHandshake />
+        <Compare
+          items={[
+            {
+              label: 'TCP — reliable byte stream',
+              tone: 'a',
+              body: (
+                <>
+                  TCP's guarantees aren't free magic — they're mechanism. <strong>Sequence numbers</strong> let the receiver reorder
+                  and detect gaps; <strong>ACKs</strong> trigger retransmission of anything unacknowledged; the{' '}
+                  <strong>sliding window</strong> bounds in-flight data; <strong>congestion control</strong> (CUBIC default, BBR newer)
+                  probes for bandwidth and backs off on loss. Every one of these adds latency you can sometimes feel. The defining
+                  cost is <strong>head-of-line blocking</strong>: it's <em>one</em> byte stream, so a single lost segment stalls
+                  delivery of <em>everything</em> sent after it until the retransmit arrives — even data already in the receiver's
+                  buffer. On a lossy mobile link this is why a page with one stuck asset feels frozen.
+                </>
+              ),
+            },
+            {
+              label: 'UDP — fire-and-forget datagrams',
+              tone: 'b',
+              body: (
+                <>
+                  UDP is an 8-byte header and nothing else — no handshake, no state, no ordering, no retransmit. If a datagram is
+                  lost, it's just gone, and the app never hears about it. That's a feature for DNS (just ask again), NTP, and
+                  real-time media/gaming (a 200ms-old position update is worthless — you want the <em>next</em> one, not the lost one
+                  redelivered).
+                </>
+              ),
+            },
+            {
+              label: 'QUIC — the synthesis',
+              tone: 'c',
+              body: (
+                <>
+                  QUIC (the transport under HTTP/3) is reliable, ordered <em>streams</em> built in userspace on top of UDP. Multiple
+                  independent streams mean a lost packet only stalls its own stream, not the others — it kills TCP's HOL blocking. It
+                  also folds the TLS handshake into the transport handshake (1-RTT, or 0-RTT on resumption) and survives IP changes
+                  via a connection ID, which is why it's a real win on mobile.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'TCP 3-way handshake — 1 RTT' },
+            { label: 'TLS handshake — +1–2 RTT' },
+            { label: 'on a 300ms link: ~1s of dead air', tone: 'fail' },
+            { label: 'first byte of your request finally sent' },
+          ]}
+          caption={
+            <>
+              <strong className="text-amber-200">The handshake tax on high-RTT links.</strong> The 3-way handshake costs one full
+              round trip <em>before a single byte of your request is sent</em>. Add TLS and it's 2–3 RTT of pure setup. On a 300ms
+              satellite or cross-region link that's ~1s of dead air the server never sees — so "the API is slow" can be entirely
+              connection setup, and your server timing graph looks perfectly healthy. Fix: connection reuse (keep-alive, HTTP/2), TLS
+              1.3, putting an edge POP near the client. Measure it with{' '}
+              <InlineCode>curl -w "%{'{'}time_connect{'}'} %{'{'}time_starttransfer{'}'}"</InlineCode>.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Connection refused — fast fail',
+              tone: 'warn',
+              body: (
+                <>
+                  Your SYN reached the host and it sent back a RST — nothing is listening on that port (process down, wrong port).
+                  Fast failure. Refused → it's an app/port problem. Don't debug the network when the host actively rejected you.
+                </>
+              ),
+            },
+            {
+              label: 'Connection timeout — slow fail',
+              tone: 'fail',
+              body: (
+                <>
+                  Your SYN got <em>silently dropped</em> — a firewall/security-group is eating it, or the host is unreachable. Slow
+                  failure (the kernel retries the SYN for ~1 min). Timeout → it's a network/firewall problem. Don't debug the app when
+                  the SYN never arrived.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">TCP failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The handshake tax on high-RTT links</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                The 3-way handshake costs one full round trip <em>before a single byte of your request is sent</em>. Add TLS and it's 2–3 RTT of pure setup. On a 300ms satellite or cross-region link that's ~1s of dead air the server never sees — so "the API is slow" can be entirely connection setup, and your server timing graph looks perfectly healthy.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Fix: connection reuse (keep-alive, HTTP/2), TLS 1.3, putting an edge POP near the client. Measure it with <InlineCode>curl -w "%{'{'}time_connect{'}'} %{'{'}time_starttransfer{'}'}"</InlineCode>.
-              </p>
-            </div>
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Connection refused vs. connection timeout</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                These look similar but mean opposite things. <strong>Refused</strong> = your SYN reached the host and it sent back a RST — nothing is listening on that port (process down, wrong port). Fast failure. <strong>Timeout</strong> = your SYN got <em>silently dropped</em> — a firewall/security-group is eating it, or the host is unreachable. Slow failure (the kernel retries the SYN for ~1 min).
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Refused → it's an app/port problem. Timeout → it's a network/firewall problem. Don't debug the app when the SYN never arrived.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Default to TCP — almost everything (HTTP, databases, gRPC) needs ordered reliable bytes and you don't want to reimplement them. Reach for UDP only when you'll handle loss yourself <em>and</em> stale data is worse than no data, or when you can use QUIC and get reliability without the HOL cost.
+          <h4 className="mb-2 font-semibold">When to reach for which</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Default to TCP — almost everything (HTTP, databases, gRPC) needs ordered reliable bytes and you don't want to reimplement
+            them. Reach for UDP only when you'll handle loss yourself <em>and</em> stale data is worse than no data, or when you can
+            use QUIC and get reliability without the HOL cost.
           </p>
         </Card>
-        <TcpHandshake />
       </Section>
 
       <Section id="dns" kicker="3.4" title="DNS — Domain Name System">
@@ -115,42 +310,102 @@ export default function Layer3() {
           index={3}
           title="A walking tour of one hostname lookup"
           description="Browser → OS → recursive resolver → root → TLD → authoritative. The resolver does the walking; everything along the way caches by TTL. That caching is both why DNS scales and why a deploy 'isn't live yet'."
-        >
-          <Bullets
-            items={[
-              <>The chain is a delegation, not a lookup. Root knows only "ask the <InlineCode>.com</InlineCode> servers"; the TLD knows only "ask <InlineCode>example.com</InlineCode>'s nameservers"; the <strong>authoritative</strong> server is the only one with the real answer. Your code never does this — the recursive resolver (8.8.8.8, your ISP's, your VPC's) does, and hands you the cached result.</>,
-              <>Record types you'll actually touch: <strong>A</strong>/<strong>AAAA</strong> (name→IP), <strong>CNAME</strong> (name→another name, chased by the resolver — can't coexist with other records, so never on a zone apex), <strong>MX</strong> (mail), <strong>TXT</strong> (SPF/DKIM/domain-verification), <strong>NS</strong> (delegation). <strong>SRV</strong> for service discovery.</>,
-              <>TTL is a cache lifetime in seconds, set per-record by the authoritative zone. It's the central trade-off: low TTL = fast propagation, more query load and a slower average lookup; high TTL = cheap and fast, but a change takes that long to take effect <em>everywhere</em>.</>,
-              <>"DNS propagation" is a misnomer — nothing is pushed. Old records simply sit in resolver caches until their TTL expires. The fix for a planned change: <strong>lower the TTL to ~60s a day before</strong>, make the change, then raise it back. Drop the TTL on the day of and the old high-TTL record is already cached against you.</>,
-              <>DNS rides UDP/53 by default (one packet, fast); falls back to TCP for large responses (DNSSEC, big record sets). DNSSEC <em>signs</em> records (integrity, not privacy); DoH/DoT <em>encrypt</em> the query (privacy, not integrity) — different problems.</>,
-              <><InlineCode>dig +trace example.com</InlineCode> walks the delegation yourself; <InlineCode>dig example.com @8.8.8.8</InlineCode> asks a specific resolver, bypassing your local cache — essential for "is it just <em>my</em> machine that's stale?"</>,
-            ]}
-          />
-        </TopicCard>
-        <Card>
-          <h4 className="mb-3 font-semibold">DNS failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">"The deploy isn't live yet"</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                You repointed an A record to the new server, but half of users still hit the old one. Nothing is broken — resolvers worldwide cached the old IP and won't re-query until its TTL expires. If that TTL was 3600, you have an hour of split traffic you didn't plan for.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Why it bites: you can't shorten a TTL retroactively — the value already in caches is the <em>old</em> one. Lower it <em>before</em> the cutover. Until every cache drains, the old server must keep serving correctly.
-              </p>
-            </div>
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Negative caching &amp; stale local cache</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                NXDOMAIN is cached too — governed by the zone's SOA minimum, not the record TTL. Query a name <em>before</em> you create it and the "doesn't exist" answer sticks around, so the brand-new record looks broken for minutes.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                And the resolver isn't the only cache: the OS and many runtimes cache too. "Works in <InlineCode>dig</InlineCode> but not in my app" = a stale process-local cache; <InlineCode>dig</InlineCode> bypasses it.
-              </p>
-            </div>
-          </div>
-        </Card>
+        />
         <DnsResolver />
+        <Steps
+          steps={[
+            { label: 'recursive resolver — no cache entry' },
+            { label: 'root: "ask the .com servers"' },
+            { label: 'TLD: "ask example.com’s nameservers"' },
+            { label: 'authoritative: the real answer', tone: 'ok' },
+          ]}
+          caption={
+            <>
+              The chain is a <strong>delegation, not a lookup</strong>. Root knows only "ask the <InlineCode>.com</InlineCode> servers";
+              the TLD knows only "ask <InlineCode>example.com</InlineCode>'s nameservers"; the <strong>authoritative</strong> server is
+              the only one with the real answer. Your code never does this — the recursive resolver (8.8.8.8, your ISP's, your VPC's)
+              does, and hands you the cached result.
+            </>
+          }
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Record types you'll actually touch</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            <strong>A</strong>/<strong>AAAA</strong> (name→IP), <strong>CNAME</strong> (name→another name, chased by the resolver —
+            can't coexist with other records, so never on a zone apex), <strong>MX</strong> (mail), <strong>TXT</strong>{' '}
+            (SPF/DKIM/domain-verification), <strong>NS</strong> (delegation). <strong>SRV</strong> for service discovery.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'Low TTL (~60s)',
+              tone: 'a',
+              body: (
+                <>
+                  Fast propagation — a change takes effect almost everywhere within a minute. Cost: more query load on the
+                  authoritative servers and a slower average lookup (caches miss more often). Use it around a planned change.
+                </>
+              ),
+            },
+            {
+              label: 'High TTL (hours)',
+              tone: 'c',
+              body: (
+                <>
+                  Cheap and fast — most lookups hit a warm cache. Cost: a change takes that long to take effect <em>everywhere</em>,
+                  and you can't shorten it retroactively. TTL is a per-record cache lifetime in seconds, set by the authoritative
+                  zone.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">"Propagation" is a misnomer — and how to plan a change</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Nothing is pushed. Old records simply sit in resolver caches until their TTL expires. The fix for a planned change:{' '}
+            <strong>lower the TTL to ~60s a day before</strong>, make the change, then raise it back. Drop the TTL on the day of and
+            the old high-TTL record is already cached against you. DNS rides UDP/53 by default (one packet, fast); falls back to TCP
+            for large responses (DNSSEC, big record sets). DNSSEC <em>signs</em> records (integrity, not privacy); DoH/DoT{' '}
+            <em>encrypt</em> the query (privacy, not integrity) — different problems. <InlineCode>dig +trace example.com</InlineCode>{' '}
+            walks the delegation yourself; <InlineCode>dig example.com @8.8.8.8</InlineCode> asks a specific resolver, bypassing your
+            local cache — essential for "is it just <em>my</em> machine that's stale?"
+          </p>
+        </Card>
+        <Steps
+          steps={[
+            { label: 'repoint A record to new server' },
+            { label: 'resolvers worldwide still hold the old IP' },
+            { label: "won't re-query until TTL expires" },
+            { label: 'an hour of split traffic you didn’t plan for', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-amber-200">"The deploy isn't live yet."</strong> You repointed an A record to the new server,
+              but half of users still hit the old one. Nothing is broken — resolvers worldwide cached the old IP. If that TTL was
+              3600, you have an hour of split traffic. Why it bites: you can't shorten a TTL retroactively — the value already in
+              caches is the <em>old</em> one. Lower it <em>before</em> the cutover. Until every cache drains, the old server must keep
+              serving correctly.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: 'query a name before you create it' },
+            { label: 'NXDOMAIN cached — per SOA minimum' },
+            { label: 'you create the record' },
+            { label: 'brand-new record looks broken for minutes', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">Negative caching &amp; stale local cache.</strong> NXDOMAIN is cached too — governed
+              by the zone's SOA minimum, not the record TTL. And the resolver isn't the only cache: the OS and many runtimes cache
+              too. "Works in <InlineCode>dig</InlineCode> but not in my app" = a stale process-local cache; <InlineCode>dig</InlineCode>{' '}
+              bypasses it.
+            </>
+          }
+        />
       </Section>
 
       <Section id="http" kicker="3.5" title="HTTP / HTTPS Deep Dive">
@@ -159,27 +414,129 @@ export default function Layer3() {
           index={4}
           title="The protocol you ship every day"
           description="HTTP/1.1 is human-readable text, one in-flight request per connection. HTTP/2 is binary frames, many streams multiplexed over one connection. HTTP/3 moves that onto QUIC. The semantics (methods, statuses, headers) are identical across all three — only the wire format and connection model change."
-        >
-          <Bullets
-            items={[
-              <><strong>Idempotent</strong> = same request sent twice has the same effect as once — it's a retry-safety property, not "no side effects". GET/PUT/DELETE are idempotent so a client (or proxy) can safely retry them on a timeout; POST is not, which is exactly why a double-submitted form charges the card twice. <strong>Safe</strong> = no state change at all (GET, HEAD). A GET that mutates is a real bug — crawlers and prefetchers will trigger it.</>,
-              <>Status codes are a contract, and the precise one matters: <strong>400</strong> (client sent garbage) vs <strong>401</strong> (not authenticated) vs <strong>403</strong> (authenticated, not allowed) vs <strong>404</strong>; <strong>409</strong> for a state conflict; <strong>422</strong> for well-formed-but-invalid; <strong>429</strong> with <InlineCode>Retry-After</InlineCode>; <strong>500</strong> (we crashed) vs <strong>503</strong> (temporarily down, retry me). Returning <InlineCode>200</InlineCode> with <InlineCode>{'{'}"error": ...{'}'}</InlineCode> in the body is the classic anti-pattern — every cache, proxy, and monitor now thinks it succeeded.</>,
-              <>HTTP/1.1's limit is <em>one request per connection at a time</em>, so browsers open 6 parallel connections per origin and small assets queue behind big ones (head-of-line blocking at the app layer). HTTP/2 fixes this with multiplexed streams over <em>one</em> connection — but they still share <em>one TCP stream</em>, so a single lost packet stalls every stream (HOL blocking moved down to L4). HTTP/3 over QUIC is what actually eliminates it: independent streams at the transport level.</>,
-              <>TLS 1.3 handshake is one round trip: ClientHello (with key share) → ServerHello + certificate + Finished → application data. 0-RTT resumption sends data on the first packet for return visitors — at the cost of replay-vulnerability, so never use it for non-idempotent requests. TLS 1.2 needed two RTT and shipped footgun cipher suites; <strong>TLS 1.3 only</strong>.</>,
-              <>A certificate is trusted only if the whole <strong>chain</strong> validates to a root in the client's trust store <em>and</em> the hostname matches <em>and</em> it's in date. "Works in my browser" can just mean the browser cached an intermediate the server forgot to send — <InlineCode>openssl s_client -connect host:443</InlineCode> shows the chain the server actually presents. HSTS forces HTTPS; OCSP stapling lets the server prove the cert isn't revoked without the client making a side trip to the CA.</>,
-            ]}
-          />
-        </TopicCard>
+        />
+        <HttpStatusExplorer />
+        <Compare
+          items={[
+            {
+              label: 'Safe — GET, HEAD',
+              tone: 'a',
+              body: (
+                <>
+                  <strong>Safe</strong> = no state change at all. A GET that mutates is a real bug — crawlers and prefetchers will
+                  trigger it.
+                </>
+              ),
+            },
+            {
+              label: 'Idempotent — GET, PUT, DELETE',
+              tone: 'c',
+              body: (
+                <>
+                  <strong>Idempotent</strong> = same request sent twice has the same effect as once — a retry-safety property, not "no
+                  side effects". A client or proxy can safely retry these on a timeout.
+                </>
+              ),
+            },
+            {
+              label: 'Neither — POST',
+              tone: 'fail',
+              body: (
+                <>
+                  POST is not idempotent, which is exactly why a double-submitted form charges the card twice. A retry after a timeout
+                  is not safe.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">Diagnose a slow request by layer, not by guessing</h4>
+          <h4 className="mb-2 font-semibold">Status codes are a contract — the precise one matters</h4>
           <p className="text-[13px] leading-relaxed text-ink-dim">
-            "The API is slow" is five separable costs. <InlineCode>curl -w</InlineCode> breaks them out: <InlineCode>time_namelookup</InlineCode> (DNS), <InlineCode>time_connect</InlineCode> (TCP handshake), <InlineCode>time_appconnect</InlineCode> (TLS handshake), <InlineCode>time_starttransfer</InlineCode> (server processing — time to first byte), then total minus that (transfer time = payload ÷ bandwidth).
-          </p>
-          <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-            The point: don't optimize your server (stage 4) when the cost is DNS or handshake (stages 1–3) — connection reuse and an edge POP fix those, and your code can't. And don't optimize the server when the cost is a 4 MB JSON response (stage 5) — that's pagination and compression. Each stage has a different fix; measure before you pick one.
+            <strong>400</strong> (client sent garbage) vs <strong>401</strong> (not authenticated) vs <strong>403</strong>{' '}
+            (authenticated, not allowed) vs <strong>404</strong>; <strong>409</strong> for a state conflict; <strong>422</strong> for
+            well-formed-but-invalid; <strong>429</strong> with <InlineCode>Retry-After</InlineCode>; <strong>500</strong> (we crashed)
+            vs <strong>503</strong> (temporarily down, retry me). Returning <InlineCode>200</InlineCode> with{' '}
+            <InlineCode>{'{'}"error": ...{'}'}</InlineCode> in the body is the classic anti-pattern — every cache, proxy, and monitor
+            now thinks it succeeded.
           </p>
         </Card>
-        <HttpStatusExplorer />
+        <Compare
+          items={[
+            {
+              label: 'HTTP/1.1 — one request per connection',
+              tone: 'fail',
+              body: (
+                <>
+                  One in-flight request per connection at a time, so browsers open 6 parallel connections per origin and small assets
+                  queue behind big ones — head-of-line blocking at the <em>app</em> layer.
+                </>
+              ),
+            },
+            {
+              label: 'HTTP/2 — multiplexed over one TCP stream',
+              tone: 'warn',
+              body: (
+                <>
+                  Multiplexed streams over <em>one</em> connection fixes app-layer HOL — but they still share <em>one TCP stream</em>,
+                  so a single lost packet stalls every stream. HOL blocking just moved down to L4.
+                </>
+              ),
+            },
+            {
+              label: 'HTTP/3 — independent QUIC streams',
+              tone: 'c',
+              body: (
+                <>
+                  Over QUIC, streams are independent at the transport level — a lost packet stalls only its own stream. This is what
+                  actually eliminates head-of-line blocking.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'ClientHello (with key share)' },
+            { label: 'ServerHello + certificate + Finished' },
+            { label: 'application data — 1 RTT total', tone: 'ok' },
+          ]}
+          caption={
+            <>
+              <strong>TLS 1.3 handshake</strong> is one round trip. 0-RTT resumption sends data on the first packet for return
+              visitors — at the cost of replay-vulnerability, so never use it for non-idempotent requests. TLS 1.2 needed two RTT and
+              shipped footgun cipher suites; <strong>TLS 1.3 only</strong>.
+            </>
+          }
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Certificate trust — the whole chain, the hostname, the dates</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            A certificate is trusted only if the whole <strong>chain</strong> validates to a root in the client's trust store{' '}
+            <em>and</em> the hostname matches <em>and</em> it's in date. "Works in my browser" can just mean the browser cached an
+            intermediate the server forgot to send — <InlineCode>openssl s_client -connect host:443</InlineCode> shows the chain the
+            server actually presents. HSTS forces HTTPS; OCSP stapling lets the server prove the cert isn't revoked without the client
+            making a side trip to the CA.
+          </p>
+        </Card>
+        <Steps
+          steps={[
+            { label: 'time_namelookup — DNS' },
+            { label: 'time_connect — TCP handshake' },
+            { label: 'time_appconnect — TLS handshake' },
+            { label: 'time_starttransfer — server processing (TTFB)' },
+            { label: 'transfer time — payload ÷ bandwidth' },
+          ]}
+          caption={
+            <>
+              <strong>Diagnose a slow request by layer, not by guessing.</strong> "The API is slow" is five separable costs;{' '}
+              <InlineCode>curl -w</InlineCode> breaks them out. Don't optimize your server (stage 4) when the cost is DNS or handshake
+              (stages 1–3) — connection reuse and an edge POP fix those, and your code can't. And don't optimize the server when the
+              cost is a 4 MB JSON response (stage 5) — that's pagination and compression. Each stage has a different fix; measure
+              before you pick one.
+            </>
+          }
+        />
         <CodePlayground
           mode="js"
           height={200}
@@ -198,27 +555,107 @@ console.log('body:', await res.text());`}
           index={5}
           title="The socket lifecycle"
           description="A socket is the OS handle for one connection's two byte buffers. Server: socket → bind → listen → accept. Client: socket → connect. Then send/recv until close. Every HTTP server is this loop underneath."
-        >
-          <Bullets
-            items={[
-              <><InlineCode>accept()</InlineCode> returns a <em>new</em> socket per connection — the listening socket keeps listening. That's why a server handles thousands of clients on "one port": one listener, N connection sockets, each keyed by the 4-tuple (src ip, src port, dst ip, dst port).</>,
-              <><InlineCode>SO_REUSEADDR</InlineCode> exists because of <strong>TIME_WAIT</strong>: after close, the socket lingers ~60s so late-arriving packets from the old connection can't corrupt a new one. Without the flag, restarting your server gives "address already in use" until that drains — the option lets you rebind immediately.</>,
-              <><InlineCode>TCP_NODELAY</InlineCode> disables Nagle's algorithm. Nagle batches small writes to avoid flooding the network with tiny packets — great for bulk transfer, terrible for a request/response RPC where it can add ~40ms waiting for more data that never comes. Latency-sensitive protocols turn it off.</>,
-              <><strong>send/recv don't map 1:1 to messages</strong> — TCP is a byte <em>stream</em>, not a datagram service. One <InlineCode>send</InlineCode> can arrive as three <InlineCode>recv</InlineCode>s, or three sends can coalesce into one recv. This is the "TCP framing" problem: you must define message boundaries yourself (length prefix or delimiter). It's the #1 bug in hand-rolled protocols.</>,
-              <>WebSocket: a real HTTP request with <InlineCode>Upgrade: websocket</InlineCode> that, once the server agrees, switches that same TCP connection to full-duplex framed messages. Use it when <em>both</em> sides push asynchronously — chat, collaborative editing, live cursors, multiplayer.</>,
-              <>SSE (Server-Sent Events): a normal HTTP response that never closes, streaming <InlineCode>text/event-stream</InlineCode> chunks <em>server→client only</em>. It auto-reconnects and replays from <InlineCode>Last-Event-ID</InlineCode> for free, rides plain HTTP (no proxy/firewall surprises, works over HTTP/2). Use it for one-way feeds: notifications, progress, dashboards.</>,
-            ]}
-          />
-        </TopicCard>
+        />
+        <Steps
+          steps={[
+            { label: 'socket' },
+            { label: 'bind' },
+            { label: 'listen' },
+            { label: 'accept → new socket per connection', tone: 'ok' },
+            { label: 'send / recv until close' },
+          ]}
+          caption={
+            <>
+              <InlineCode>accept()</InlineCode> returns a <em>new</em> socket per connection — the listening socket keeps listening.
+              That's why a server handles thousands of clients on "one port": one listener, N connection sockets, each keyed by the
+              4-tuple (src ip, src port, dst ip, dst port).
+            </>
+          }
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">WebSocket vs SSE vs polling — when each</h4>
+          <h4 className="mb-2 font-semibold">SO_REUSEADDR and TIME_WAIT</h4>
           <p className="text-[13px] leading-relaxed text-ink-dim">
-            Default to <strong>SSE</strong> for server→client streams — it's a few lines, survives reconnects on its own, and needs no special infrastructure. Reach for <strong>WebSocket</strong> only when the client also sends frequently and latency matters; you take on heartbeats, reconnect logic, and the fact that a raw WS connection carries no cookies/auth re-check after the handshake. Reach for plain <strong>polling</strong> when updates are infrequent and "within 30s" is fine — a persistent connection per user has real memory and load-balancer cost.
-          </p>
-          <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-            The common mistake: WebSocket for a one-way notification feed. You've signed up for connection-lifecycle management to get something SSE hands you for free. Pick the protocol by the <em>traffic shape</em>, not by which one sounds more capable.
+            <InlineCode>SO_REUSEADDR</InlineCode> exists because of <strong>TIME_WAIT</strong>: after close, the socket lingers ~60s so
+            late-arriving packets from the old connection can't corrupt a new one. Without the flag, restarting your server gives
+            "address already in use" until that drains — the option lets you rebind immediately.
           </p>
         </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">TCP_NODELAY and Nagle's algorithm</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            <InlineCode>TCP_NODELAY</InlineCode> disables Nagle's algorithm. Nagle batches small writes to avoid flooding the network
+            with tiny packets — great for bulk transfer, terrible for a request/response RPC where it can add ~40ms waiting for more
+            data that never comes. Latency-sensitive protocols turn it off.
+          </p>
+        </Card>
+        <Steps
+          steps={[
+            { label: 'app calls send() three times' },
+            { label: 'TCP is a byte stream, not datagrams' },
+            { label: 'receiver gets one coalesced recv()' },
+            { label: 'no defined message boundary → parse corrupts', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong>send/recv don't map 1:1 to messages.</strong> One <InlineCode>send</InlineCode> can arrive as three{' '}
+              <InlineCode>recv</InlineCode>s, or three sends can coalesce into one recv. This is the "TCP framing" problem: you must
+              define message boundaries yourself (length prefix or delimiter). It's the #1 bug in hand-rolled protocols.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'WebSocket — full-duplex',
+              tone: 'a',
+              body: (
+                <>
+                  A real HTTP request with <InlineCode>Upgrade: websocket</InlineCode> that, once the server agrees, switches that same
+                  TCP connection to full-duplex framed messages. Use it when <em>both</em> sides push asynchronously — chat,
+                  collaborative editing, live cursors, multiplayer. Cost: you take on heartbeats, reconnect logic, and the fact that a
+                  raw WS connection carries no cookies/auth re-check after the handshake.
+                </>
+              ),
+            },
+            {
+              label: 'SSE — server→client only',
+              tone: 'c',
+              body: (
+                <>
+                  A normal HTTP response that never closes, streaming <InlineCode>text/event-stream</InlineCode> chunks{' '}
+                  <em>server→client only</em>. It auto-reconnects and replays from <InlineCode>Last-Event-ID</InlineCode> for free,
+                  rides plain HTTP (no proxy/firewall surprises, works over HTTP/2). The default for one-way feeds: notifications,
+                  progress, dashboards — a few lines, needs no special infrastructure.
+                </>
+              ),
+            },
+            {
+              label: 'Polling — infrequent updates',
+              tone: 'warn',
+              body: (
+                <>
+                  Reach for plain polling when updates are infrequent and "within 30s" is fine — a persistent connection per user has
+                  real memory and load-balancer cost you don't always need to pay.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'need a one-way notification feed' },
+            { label: 'pick WebSocket because it "sounds more capable"' },
+            { label: 'now own heartbeats + reconnect + lifecycle' },
+            { label: 'rebuilt what SSE gives free', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong>The common mistake:</strong> WebSocket for a one-way notification feed. You've signed up for
+              connection-lifecycle management to get something SSE hands you for free. Pick the protocol by the <em>traffic shape</em>,
+              not by which one sounds more capable.
+            </>
+          }
+        />
       </Section>
 
       <Section id="security" kicker="3.7" title="Network Security Fundamentals">
@@ -227,27 +664,107 @@ console.log('body:', await res.text());`}
           index={6}
           title="Firewalls, attacks, and zero-trust"
           description="A stateless firewall judges each packet alone — so to allow a reply you must open the return ports manually. A stateful firewall (conntrack) remembers connections it allowed out and auto-permits their replies. Almost everything you use is stateful; the model is default-deny inbound, allow only what's needed."
-        >
-          <Bullets
-            items={[
-              <>Default-deny is the rule because the alternative — default-allow, block known-bad — means every service you forget to lock down is exposed. Bind internal services to <InlineCode>127.0.0.1</InlineCode> or a private subnet, never <InlineCode>0.0.0.0</InlineCode>, unless public exposure is the intent. The most common breach isn't a clever exploit — it's a database that was reachable from the internet.</>,
-              <><strong>SYN flood</strong>: attacker sends SYNs, never completes the handshake; the server's half-open connection table fills and it stops accepting real clients. SYN cookies defeat it by not allocating state until the handshake completes.</>,
-              <><strong>Amplification</strong> (DNS/NTP): attacker spoofs the victim's IP as source, sends a tiny query to a server that returns a huge reply — the victim gets flooded by traffic it never asked for, multiplied 50×+. The enabler is UDP having no handshake to verify the source address.</>,
-              <><strong>ARP poisoning</strong>: on a shared LAN, an attacker forges ARP replies to map the gateway's IP to its own MAC — now it's a man-in-the-middle for the whole segment. The lesson it teaches: <em>L2 adjacency is not trust</em>, which is the whole argument for Zero Trust.</>,
-              <>VPNs: <strong>WireGuard</strong> (small, fast, modern crypto — the default now), <strong>IPsec</strong> (site-to-site, baked into routers), <strong>OpenVPN</strong> (TLS-based, traverses restrictive networks). But a VPN only moves the trust boundary — being "on the VPN" is still a network location, not an identity.</>,
-              <>Zero Trust: every request is authenticated and authorized on its own merits, regardless of source IP. <strong>An internal IP is not a credential.</strong> "It came from 10.x so it's safe" is the assumption that turns one compromised host into a full breach — lateral movement. This is why L8/auth checks every call even service-to-service.</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">The CORS mental model — what it is, and what it isn't</h4>
+          <h4 className="mb-2 font-semibold">Default-deny — why it's the rule</h4>
           <p className="text-[13px] leading-relaxed text-ink-dim">
-            CORS is enforced by the <em>browser</em>, not the server. The server always runs the request and sends the response; the browser then checks for <InlineCode>Access-Control-Allow-Origin</InlineCode> and, if it's missing, <em>hides the response from the JS that asked for it</em>. So a "CORS error" is never a server crash — it's a missing response header. The fix is on the server, not the client.
-          </p>
-          <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-            And it is <strong>not a security boundary</strong>. <InlineCode>curl</InlineCode>, a mobile app, or any non-browser client ignores CORS entirely — it only stops <em>other websites'</em> JavaScript from reading your authenticated responses in a user's browser. Your real authorization still has to live server-side on every endpoint. (API contract design and where these checks belong is L5.)
+            Default-deny is the rule because the alternative — default-allow, block known-bad — means every service you forget to lock
+            down is exposed. Bind internal services to <InlineCode>127.0.0.1</InlineCode> or a private subnet, never{' '}
+            <InlineCode>0.0.0.0</InlineCode>, unless public exposure is the intent. The most common breach isn't a clever exploit —
+            it's a database that was reachable from the internet.
           </p>
         </Card>
+        <Steps
+          steps={[
+            { label: 'attacker sends a flood of SYNs' },
+            { label: 'never completes the handshake' },
+            { label: 'half-open connection table fills' },
+            { label: 'server stops accepting real clients', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">SYN flood.</strong> The server's half-open connection table fills and it stops
+              accepting real clients. SYN cookies defeat it by not allocating state until the handshake completes.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: "attacker spoofs the victim's IP as source" },
+            { label: 'sends a tiny query to a DNS/NTP server' },
+            { label: 'server returns a huge reply to the victim' },
+            { label: 'victim flooded — amplified 50×+', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">Amplification (DNS/NTP).</strong> The victim gets flooded by traffic it never asked
+              for, multiplied 50×+. The enabler is UDP having no handshake to verify the source address.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: 'attacker on a shared LAN forges ARP replies' },
+            { label: "gateway's IP now maps to attacker's MAC" },
+            { label: 'attacker is MITM for the whole segment', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">ARP poisoning.</strong> The lesson it teaches: <em>L2 adjacency is not trust</em>,
+              which is the whole argument for Zero Trust.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'WireGuard',
+              tone: 'a',
+              body: <>Small, fast, modern crypto — the default now.</>,
+            },
+            {
+              label: 'IPsec',
+              tone: 'b',
+              body: <>Site-to-site, baked into routers.</>,
+            },
+            {
+              label: 'OpenVPN',
+              tone: 'c',
+              body: (
+                <>
+                  TLS-based, traverses restrictive networks. But a VPN only moves the trust boundary — being "on the VPN" is still a
+                  network location, not an identity.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Zero Trust — an internal IP is not a credential</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Every request is authenticated and authorized on its own merits, regardless of source IP. <strong>An internal IP is not a
+            credential.</strong> "It came from 10.x so it's safe" is the assumption that turns one compromised host into a full breach
+            — lateral movement. This is why L8/auth checks every call even service-to-service.
+          </p>
+        </Card>
+        <Steps
+          steps={[
+            { label: "browser's JS calls a cross-origin API" },
+            { label: 'server runs the request, sends the response' },
+            { label: 'browser checks Access-Control-Allow-Origin' },
+            { label: 'header missing → browser hides the response', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong>The CORS mental model.</strong> CORS is enforced by the <em>browser</em>, not the server. So a "CORS error" is
+              never a server crash — it's a missing response header, and the fix is on the server. And it is{' '}
+              <strong>not a security boundary</strong>: <InlineCode>curl</InlineCode>, a mobile app, or any non-browser client ignores
+              CORS entirely — it only stops <em>other websites'</em> JavaScript from reading your authenticated responses in a user's
+              browser. Your real authorization still has to live server-side on every endpoint. (API contract design and where these
+              checks belong is L5.)
+            </>
+          }
+        />
       </Section>
 
       <Section id="quiz" kicker="Knowledge Check" title="Layer 3 Quiz">

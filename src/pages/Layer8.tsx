@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Globe2, Cookie, ShieldCheck, Database, Zap, Smartphone, Bell, Play, RotateCcw } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat } from '../components/UI';
+import { Section, TopicCard, InlineCode, Card, Stat, Compare, Steps } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
 import { cn } from '../lib/cn';
@@ -19,44 +19,129 @@ export default function Layer8() {
           index={0}
           title="State on the stateless web"
           description="HTTP is stateless — the server forgets you between requests. A cookie is the browser's automatic re-attach: once Set-Cookie lands, the browser replays it on every matching request without you asking. That convenience is also the attack surface — the browser attaches it even when another site triggered the request."
-        >
-          <Bullets
-            items={[
-              <>Server-side session: the cookie holds an opaque ID, the real data lives in Redis/DB keyed by that ID. Logout = <InlineCode>DEL session:id</InlineCode> and the token is dead instantly. Cost: every request does a store lookup, and you need a shared store across instances (or sticky sessions).</>,
-              <>JWT-in-cookie: the cookie carries the signed claims, the server verifies the signature and trusts the payload — no lookup, no store. Cost: it's valid until <InlineCode>exp</InlineCode> no matter what. You can't revoke a stolen token; "logout" only clears the client's copy. Mitigate with short <InlineCode>exp</InlineCode> + a refresh token, or a denylist — which re-introduces the store you were avoiding.</>,
-              <><InlineCode>HttpOnly</InlineCode> hides the cookie from <InlineCode>document.cookie</InlineCode> — an XSS payload can't <em>read</em> the token. It can still <em>use</em> your session by calling your API from the injected script; HttpOnly stops exfiltration, not abuse. <InlineCode>Secure</InlineCode> blocks the cookie on plaintext HTTP so a network attacker can't sniff it.</>,
-              <><InlineCode>SameSite=Lax</InlineCode> (the modern default) stops the browser attaching the cookie to cross-site POSTs and subresource requests — the exact shape of a CSRF attack (evil.com auto-submits a form to your <InlineCode>/transfer</InlineCode>). It still sends on top-level GET navigation, so following a link to your site stays logged in. <InlineCode>Strict</InlineCode> blocks even that link-follow; <InlineCode>None</InlineCode> sends everywhere and <em>requires</em> <InlineCode>Secure</InlineCode>.</>,
-              <><InlineCode>__Host-</InlineCode> prefix is enforced by the browser: it rejects the <InlineCode>Set-Cookie</InlineCode> unless it has <InlineCode>Secure</InlineCode>, <InlineCode>Path=/</InlineCode>, and no <InlineCode>Domain</InlineCode>. That last part matters — without it, a subdomain (or an attacker who got XSS on <InlineCode>blog.yoursite.com</InlineCode>) can set a <InlineCode>Domain=yoursite.com</InlineCode> cookie that overrides yours. The prefix makes the cookie un-spoofable from a sibling host.</>,
-              <>Modern SPA pattern: short-lived access token in JS memory (a variable, not storage — dies on refresh, never persisted) + long-lived refresh token in an <InlineCode>HttpOnly</InlineCode> cookie scoped to the <InlineCode>/auth/refresh</InlineCode> path. XSS can't read either; the refresh cookie is only attached to the one endpoint that needs it.</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <CookieBuilder />
+        <Compare
+          items={[
+            {
+              label: 'Server-side session',
+              tone: 'a',
+              body: (
+                <>
+                  The cookie holds an opaque ID, the real data lives in Redis/DB keyed by that ID. Logout ={' '}
+                  <InlineCode>DEL session:id</InlineCode> and the token is dead instantly. Cost: every request does a store lookup, and
+                  you need a shared store across instances (or sticky sessions).
+                </>
+              ),
+            },
+            {
+              label: 'JWT-in-cookie',
+              tone: 'b',
+              body: (
+                <>
+                  The cookie carries the signed claims, the server verifies the signature and trusts the payload — no lookup, no store.
+                  Cost: it's valid until <InlineCode>exp</InlineCode> no matter what. You can't revoke a stolen token; "logout" only
+                  clears the client's copy. Mitigate with short <InlineCode>exp</InlineCode> + a refresh token, or a denylist — which
+                  re-introduces the store you were avoiding.
+                </>
+              ),
+            },
+            {
+              label: 'Modern SPA pattern',
+              tone: 'c',
+              body: (
+                <>
+                  Short-lived access token in JS memory (a variable, not storage — dies on refresh, never persisted) + long-lived
+                  refresh token in an <InlineCode>HttpOnly</InlineCode> cookie scoped to the <InlineCode>/auth/refresh</InlineCode> path.
+                  XSS can't read either; the refresh cookie is only attached to the one endpoint that needs it.
+                </>
+              ),
+            },
+          ]}
+        />
         <SessionVsJwt />
+        <Compare
+          items={[
+            {
+              label: 'HttpOnly + Secure',
+              tone: 'a',
+              body: (
+                <>
+                  <InlineCode>HttpOnly</InlineCode> hides the cookie from <InlineCode>document.cookie</InlineCode> — an XSS payload can't{' '}
+                  <em>read</em> the token. It can still <em>use</em> your session by calling your API from the injected script;
+                  HttpOnly stops exfiltration, not abuse. <InlineCode>Secure</InlineCode> blocks the cookie on plaintext HTTP so a
+                  network attacker can't sniff it.
+                </>
+              ),
+            },
+            {
+              label: 'SameSite: Lax / Strict / None',
+              tone: 'b',
+              body: (
+                <>
+                  <InlineCode>SameSite=Lax</InlineCode> (the modern default) stops the browser attaching the cookie to cross-site POSTs
+                  and subresource requests — the exact shape of a CSRF attack (evil.com auto-submits a form to your{' '}
+                  <InlineCode>/transfer</InlineCode>). It still sends on top-level GET navigation, so following a link to your site
+                  stays logged in. <InlineCode>Strict</InlineCode> blocks even that link-follow; <InlineCode>None</InlineCode> sends
+                  everywhere and <em>requires</em> <InlineCode>Secure</InlineCode>.
+                </>
+              ),
+            },
+            {
+              label: '__Host- prefix',
+              tone: 'c',
+              body: (
+                <>
+                  Enforced by the browser: it rejects the <InlineCode>Set-Cookie</InlineCode> unless it has <InlineCode>Secure</InlineCode>,{' '}
+                  <InlineCode>Path=/</InlineCode>, and no <InlineCode>Domain</InlineCode>. That last part matters — without it, a
+                  subdomain (or an attacker who got XSS on <InlineCode>blog.yoursite.com</InlineCode>) can set a{' '}
+                  <InlineCode>Domain=yoursite.com</InlineCode> cookie that overrides yours. The prefix makes the cookie un-spoofable
+                  from a sibling host.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'evil.com auto-submits a form to bank.com/transfer' },
+            { label: 'browser sees a request to bank.com' },
+            { label: 'attaches your bank.com session cookie' },
+            { label: 'server can’t tell it from a real request', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">CSRF — the browser attaches your cookie for the attacker.</strong> evil.com serves{' '}
+              <InlineCode>{'<form action="https://bank.com/transfer" method="POST">'}</InlineCode> and auto-submits it. The attacker
+              never sees the cookie; they just <em>borrow</em> it. Fix: <InlineCode>SameSite=Lax</InlineCode> alone blocks the
+              cross-site POST. For defence-in-depth (and the GET-navigation hole) add a CSRF token the attacker's page can't read.
+              This is why an XSS bug is worse than CSRF — XSS runs <em>on</em> your origin, so SameSite doesn't help.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: 'user clicks logout' },
+            { label: 'you clear the cookie — they’re "out"' },
+            { label: 'the JWT they still hold is signature-valid until exp' },
+            { label: 'paste it back in a header — stateless server accepts it', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-amber-200">The "logout doesn't log out" JWT bug.</strong> There's nothing to check the token
+              against. This is the cost of statelessness, not a bug you can patch cleanly. Real revocation needs server state: a short{' '}
+              <InlineCode>exp</InlineCode> (minutes) so the window is small, plus a denylist or a per-user token version checked on
+              refresh. At that point a server-side session is often simpler — pick JWT only when statelessness is a hard requirement.
+            </>
+          }
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">The two failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">CSRF — the browser attaches your cookie for the attacker</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                evil.com serves <InlineCode>{'<form action="https://bank.com/transfer" method="POST">'}</InlineCode> and auto-submits it. The browser sees a request to bank.com and dutifully attaches your bank.com session cookie — the server can't tell it apart from a real one. The attacker never sees the cookie; they just <em>borrow</em> it.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Fix: <InlineCode>SameSite=Lax</InlineCode> alone blocks the cross-site POST. For defence-in-depth (and the GET-navigation hole) add a CSRF token the attacker's page can't read. This is why an XSS bug is worse than CSRF — XSS runs <em>on</em> your origin, so SameSite doesn't help.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The "logout doesn't log out" JWT bug</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                User clicks logout, you clear the cookie, they're "out". But the JWT they (or an attacker who copied it) still hold is signature-valid until <InlineCode>exp</InlineCode>. Paste it back in a header and the stateless server happily accepts it — there's nothing to check it against.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                This is the cost of statelessness, not a bug you can patch cleanly. Real revocation needs server state: a short <InlineCode>exp</InlineCode> (minutes) so the window is small, plus a denylist or a per-user token version checked on refresh. At that point a server-side session is often simpler — pick JWT only when statelessness is a hard requirement.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Default to a server-side session in an <InlineCode>HttpOnly; Secure; SameSite=Lax</InlineCode> cookie — instant revocation, tiny cookie, the store lookup is one Redis hit. Reach for JWT only when you genuinely can't keep shared state (multi-region edge, third-party API tokens). The cookie attributes are not optional decoration — each one closes a specific attack.
+          <h4 className="mb-2 font-semibold">Default to a server-side session</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Default to a server-side session in an <InlineCode>HttpOnly; Secure; SameSite=Lax</InlineCode> cookie — instant
+            revocation, tiny cookie, the store lookup is one Redis hit. Reach for JWT only when you genuinely can't keep shared state
+            (multi-region edge, third-party API tokens). The cookie attributes are not optional decoration — each one closes a
+            specific attack.
           </p>
         </Card>
       </Section>
@@ -67,42 +152,106 @@ export default function Layer8() {
           index={1}
           title="Why your fetch fails with no obvious error"
           description="The same-origin policy is the browser's default: JS may send a cross-origin request but may not read the response unless the server opts in. Think of it as a browser-side allowlist — the server publishes which origins it trusts via Access-Control-Allow-* headers, and the browser enforces it. The server itself never blocks anything; it already ran the handler."
-        >
-          <Bullets
-            items={[
-              <>Same-origin = identical scheme + host + port. <InlineCode>https://a.com</InlineCode> ≠ <InlineCode>https://api.a.com</InlineCode> (host) ≠ <InlineCode>http://a.com</InlineCode> (scheme) ≠ <InlineCode>https://a.com:8443</InlineCode> (port). Cross-origin is the common case for a SPA hitting its own API on a different subdomain.</>,
-              <>Simple request (GET/HEAD, or POST with a safelisted <InlineCode>Content-Type</InlineCode> — <InlineCode>text/plain</InlineCode>, <InlineCode>form-urlencoded</InlineCode>, <InlineCode>multipart</InlineCode> — no custom headers, no credentials) → sent directly, the browser just gates the <em>response</em>. Anything else (a <InlineCode>DELETE</InlineCode>, an <InlineCode>application/json</InlineCode> body, an <InlineCode>Authorization</InlineCode> header) → the browser first sends an <InlineCode>OPTIONS</InlineCode> preflight asking permission, and only sends the real request if the answer allows it.</>,
-              <>The preflight is a real round trip the user pays for. The server answers it with <InlineCode>Access-Control-Allow-Methods/Headers</InlineCode> and an <InlineCode>Access-Control-Max-Age</InlineCode> that tells the browser how long to cache the "yes" — without it, every request re-preflights and you've doubled your latency.</>,
-              <><InlineCode>Access-Control-Allow-Credentials: true</InlineCode> is required for the browser to send cookies <em>and</em> to expose the response — and it is incompatible with <InlineCode>Access-Control-Allow-Origin: *</InlineCode>. With credentials you must echo the exact requesting origin (and add <InlineCode>Vary: Origin</InlineCode> so a CDN doesn't serve one origin's headers to another).</>,
-              <>CORS is enforced by the browser, not the server — <InlineCode>curl</InlineCode>, Postman, and your Go backend ignore it entirely. So CORS is <strong>not a security boundary</strong>: it stops a <em>victim's browser</em> on another site from reading your responses; it does nothing against a direct attacker. Auth still has to be real (cookies, tokens, server-side checks).</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <CorsSimulator />
         <Card>
-          <h4 className="mb-3 font-semibold">The CORS bugs worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">"Server logs a 200, fetch still rejects"</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                The request reached the server, the handler ran, the row was written, the response is 200 — and <InlineCode>fetch</InlineCode> still throws "TypeError: Failed to fetch". The browser <em>received</em> the response, checked for <InlineCode>Access-Control-Allow-Origin</InlineCode>, didn't find a matching one, and threw the body away before your JS could touch it.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                The tell: it's a CORS problem, not a server problem — and on a non-idempotent call (a POST that charged a card) the side effect already happened. Fix the headers on the server; never "fix" it client-side. Also: the error object is deliberately opaque (no status, no body) so a cross-origin page can't probe your API.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The reflexive wildcard "fix"</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                You hit a CORS error, set <InlineCode>Access-Control-Allow-Origin: *</InlineCode>, error gone — for now. Then you add cookies and it breaks again: wildcard is forbidden with credentials. So you reflect <em>any</em> <InlineCode>Origin</InlineCode> header back unconditionally — now every site on the internet can make credentialed calls to your API as your logged-in users.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Right answer: an explicit allowlist of your own origins, check the incoming <InlineCode>Origin</InlineCode> against it, echo it only on a match. CORS config is an allowlist decision, not a "make the error go away" toggle.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Mental model: the server always runs the handler; CORS only decides whether the browser hands the result back to JS. If you can't explain a fetch failure, open the Network tab — the request and its real status are right there even though <InlineCode>fetch</InlineCode> gave you nothing. HTTP-protocol and TLS mechanics live in L3; this is purely the browser's read-gate.
+          <h4 className="mb-2 font-semibold">Same-origin = identical scheme + host + port</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            <InlineCode>https://a.com</InlineCode> ≠ <InlineCode>https://api.a.com</InlineCode> (host) ≠ <InlineCode>http://a.com</InlineCode>{' '}
+            (scheme) ≠ <InlineCode>https://a.com:8443</InlineCode> (port). Cross-origin is the common case for a SPA hitting its own API
+            on a different subdomain.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'Simple request — sent directly',
+              tone: 'a',
+              body: (
+                <>
+                  GET/HEAD, or POST with a safelisted <InlineCode>Content-Type</InlineCode> (<InlineCode>text/plain</InlineCode>,{' '}
+                  <InlineCode>form-urlencoded</InlineCode>, <InlineCode>multipart</InlineCode>), no custom headers, no credentials → sent
+                  directly, the browser just gates the <em>response</em>.
+                </>
+              ),
+            },
+            {
+              label: 'Preflighted request — OPTIONS first',
+              tone: 'b',
+              body: (
+                <>
+                  Anything else (a <InlineCode>DELETE</InlineCode>, an <InlineCode>application/json</InlineCode> body, an{' '}
+                  <InlineCode>Authorization</InlineCode> header) → the browser first sends an <InlineCode>OPTIONS</InlineCode> preflight
+                  asking permission, and only sends the real request if the answer allows it. The preflight is a real round trip the
+                  user pays for. The server answers it with <InlineCode>Access-Control-Allow-Methods/Headers</InlineCode> and an{' '}
+                  <InlineCode>Access-Control-Max-Age</InlineCode> that tells the browser how long to cache the "yes" — without it, every
+                  request re-preflights and you've doubled your latency.
+                </>
+              ),
+            },
+            {
+              label: 'Credentialed request — cookies attached',
+              tone: 'c',
+              body: (
+                <>
+                  <InlineCode>Access-Control-Allow-Credentials: true</InlineCode> is required for the browser to send cookies <em>and</em>{' '}
+                  to expose the response — and it is incompatible with <InlineCode>Access-Control-Allow-Origin: *</InlineCode>. With
+                  credentials you must echo the exact requesting origin (and add <InlineCode>Vary: Origin</InlineCode> so a CDN doesn't
+                  serve one origin's headers to another).
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">CORS is enforced by the browser — not a security boundary</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            CORS is enforced by the browser, not the server — <InlineCode>curl</InlineCode>, Postman, and your Go backend ignore it
+            entirely. So CORS is <strong>not a security boundary</strong>: it stops a <em>victim's browser</em> on another site from
+            reading your responses; it does nothing against a direct attacker. Auth still has to be real (cookies, tokens,
+            server-side checks).
+          </p>
+        </Card>
+        <Steps
+          steps={[
+            { label: 'cross-origin fetch reaches the server' },
+            { label: 'handler runs, row written, response is 200', tone: 'ok' },
+            { label: 'browser checks for Access-Control-Allow-Origin' },
+            { label: 'no match — browser throws the body away', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">"Server logs a 200, fetch still rejects."</strong> <InlineCode>fetch</InlineCode>{' '}
+              throws "TypeError: Failed to fetch" even though the request succeeded. The tell: it's a CORS problem, not a server
+              problem — and on a non-idempotent call (a POST that charged a card) the side effect already happened. Fix the headers on
+              the server; never "fix" it client-side. The error object is deliberately opaque (no status, no body) so a cross-origin
+              page can't probe your API.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: 'hit a CORS error' },
+            { label: 'set Access-Control-Allow-Origin: *' },
+            { label: 'add cookies — wildcard forbidden with credentials' },
+            { label: 'reflect any Origin back unconditionally', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-amber-200">The reflexive wildcard "fix."</strong> Reflecting any <InlineCode>Origin</InlineCode>{' '}
+              means every site on the internet can make credentialed calls to your API as your logged-in users. Right answer: an
+              explicit allowlist of your own origins, check the incoming <InlineCode>Origin</InlineCode> against it, echo it only on a
+              match. CORS config is an allowlist decision, not a "make the error go away" toggle.
+            </>
+          }
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Mental model: the handler always runs</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            The server always runs the handler; CORS only decides whether the browser hands the result back to JS. If you can't
+            explain a fetch failure, open the Network tab — the request and its real status are right there even though{' '}
+            <InlineCode>fetch</InlineCode> gave you nothing. HTTP-protocol and TLS mechanics live in L3; this is purely the browser's
+            read-gate.
           </p>
         </Card>
       </Section>
@@ -113,43 +262,123 @@ export default function Layer8() {
           index={2}
           title="The headers that lock down your app"
           description="Each of these is the browser opting into a stricter mode for your site — but only because you asked. They're response headers, so they cost one config line and zero runtime. The reason to set them all is that each one closes a different, specific attack; a site with none is one injected <script> or one downgrade away from breach."
-        >
-          <Bullets
-            items={[
-              <><InlineCode>Content-Security-Policy</InlineCode> — an allowlist of where scripts/styles/images may load from, enforced by the browser. It's the <em>second</em> line against XSS: even if an attacker injects <InlineCode>{'<script>'}</InlineCode>, the browser refuses to run it unless it matches the policy. Inline script is the hole — <InlineCode>'unsafe-inline'</InlineCode> defeats the whole point, so use a per-response <InlineCode>nonce-</InlineCode> or a hash. Failure mode: a too-loose policy (or <InlineCode>'unsafe-inline'</InlineCode> "to make the app work") gives you the header without the protection.</>,
-              <><InlineCode>Strict-Transport-Security</InlineCode> — after the first HTTPS visit, the browser refuses to talk to your host over plaintext HTTP <em>at all</em>, for <InlineCode>max-age</InlineCode> seconds. This kills the SSL-strip downgrade attack: without it, one <InlineCode>http://</InlineCode> link or typed address is a MITM window before the redirect fires. <InlineCode>preload</InlineCode> ships your domain in the browser's baked-in list so even the <em>first</em> visit is protected — but it's hard to undo, so commit deliberately.</>,
-              <><InlineCode>X-Frame-Options: DENY</InlineCode> (or CSP <InlineCode>frame-ancestors 'none'</InlineCode>, the modern superset) — stops your page being loaded in an <InlineCode>{'<iframe>'}</InlineCode>. Without it, clickjacking: an attacker frames your real page invisibly over their decoy UI, the user thinks they're clicking "play" but they're clicking your "delete account". Use <InlineCode>frame-ancestors</InlineCode> if you need to allow specific partners; XFO can't express an allowlist.</>,
-              <><InlineCode>X-Content-Type-Options: nosniff</InlineCode> — forces the browser to trust your <InlineCode>Content-Type</InlineCode> instead of guessing from the bytes. The attack it blocks: a user uploads <InlineCode>avatar.jpg</InlineCode> that's actually HTML+JS; you serve it as <InlineCode>image/jpeg</InlineCode>, but a sniffing browser sees markup, decides it's HTML, and executes the script on <em>your</em> origin.</>,
-              <><InlineCode>Referrer-Policy: strict-origin-when-cross-origin</InlineCode> — controls how much of the current URL leaks in the <InlineCode>Referer</InlineCode> header on outbound requests. The default leaks the full path; if your URLs carry tokens or IDs (<InlineCode>/reset?token=abc</InlineCode>), every third-party image and analytics call ships that secret. This policy sends the full URL same-origin but only the bare origin cross-site.</>,
-              <><InlineCode>Permissions-Policy</InlineCode> — explicitly turns off browser features your site doesn't use (<InlineCode>camera=(), microphone=(), geolocation=()</InlineCode>). It's blast-radius reduction: if you're ever XSS'd or a third-party script goes rogue, it still can't prompt for the camera, because the document itself disabled the capability.</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <SecurityHeadersBuilder />
+        <Compare
+          items={[
+            {
+              label: 'Content-Security-Policy',
+              tone: 'warn',
+              body: (
+                <>
+                  An allowlist of where scripts/styles/images may load from, enforced by the browser. It's the <em>second</em> line
+                  against XSS: even if an attacker injects <InlineCode>{'<script>'}</InlineCode>, the browser refuses to run it unless it
+                  matches the policy. Inline script is the hole — <InlineCode>'unsafe-inline'</InlineCode> defeats the whole point, so
+                  use a per-response <InlineCode>nonce-</InlineCode> or a hash. Failure mode: a too-loose policy (or{' '}
+                  <InlineCode>'unsafe-inline'</InlineCode> "to make the app work") gives you the header without the protection.
+                </>
+              ),
+            },
+            {
+              label: 'Strict-Transport-Security',
+              tone: 'a',
+              body: (
+                <>
+                  After the first HTTPS visit, the browser refuses to talk to your host over plaintext HTTP <em>at all</em>, for{' '}
+                  <InlineCode>max-age</InlineCode> seconds. This kills the SSL-strip downgrade attack: without it, one{' '}
+                  <InlineCode>http://</InlineCode> link or typed address is a MITM window before the redirect fires.{' '}
+                  <InlineCode>preload</InlineCode> ships your domain in the browser's baked-in list so even the <em>first</em> visit is
+                  protected — but it's hard to undo, so commit deliberately.
+                </>
+              ),
+            },
+            {
+              label: 'X-Frame-Options / frame-ancestors',
+              tone: 'b',
+              body: (
+                <>
+                  <InlineCode>X-Frame-Options: DENY</InlineCode> (or CSP <InlineCode>frame-ancestors 'none'</InlineCode>, the modern
+                  superset) stops your page being loaded in an <InlineCode>{'<iframe>'}</InlineCode>. Without it, clickjacking: an
+                  attacker frames your real page invisibly over their decoy UI, the user thinks they're clicking "play" but they're
+                  clicking your "delete account". Use <InlineCode>frame-ancestors</InlineCode> if you need to allow specific partners;
+                  XFO can't express an allowlist.
+                </>
+              ),
+            },
+            {
+              label: 'X-Content-Type-Options: nosniff',
+              tone: 'c',
+              body: (
+                <>
+                  Forces the browser to trust your <InlineCode>Content-Type</InlineCode> instead of guessing from the bytes. The attack
+                  it blocks: a user uploads <InlineCode>avatar.jpg</InlineCode> that's actually HTML+JS; you serve it as{' '}
+                  <InlineCode>image/jpeg</InlineCode>, but a sniffing browser sees markup, decides it's HTML, and executes the script on{' '}
+                  <em>your</em> origin.
+                </>
+              ),
+            },
+            {
+              label: 'Referrer-Policy',
+              tone: 'a',
+              body: (
+                <>
+                  <InlineCode>strict-origin-when-cross-origin</InlineCode> controls how much of the current URL leaks in the{' '}
+                  <InlineCode>Referer</InlineCode> header on outbound requests. The default leaks the full path; if your URLs carry
+                  tokens or IDs (<InlineCode>/reset?token=abc</InlineCode>), every third-party image and analytics call ships that
+                  secret. This policy sends the full URL same-origin but only the bare origin cross-site.
+                </>
+              ),
+            },
+            {
+              label: 'Permissions-Policy',
+              tone: 'b',
+              body: (
+                <>
+                  Explicitly turns off browser features your site doesn't use (<InlineCode>camera=(), microphone=(), geolocation=()</InlineCode>).
+                  It's blast-radius reduction: if you're ever XSS'd or a third-party script goes rogue, it still can't prompt for the
+                  camera, because the document itself disabled the capability.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'Why CSP is the header people get wrong',
+              tone: 'warn',
+              body: (
+                <>
+                  HSTS, XFO, nosniff are one fixed line each — set and forget. CSP has to model every script, style, font, image, and
+                  connection your app actually makes. Get it too strict and the app breaks in the browser (but not in dev, if dev
+                  skips the header); get it too loose and it's theatre. Ship it in{' '}
+                  <InlineCode>Content-Security-Policy-Report-Only</InlineCode> first: the browser reports violations to a{' '}
+                  <InlineCode>report-uri</InlineCode> endpoint without blocking anything. Watch the reports, tighten, then flip to
+                  enforcing. <InlineCode>'unsafe-inline'</InlineCode> in <InlineCode>script-src</InlineCode> is the line to never accept
+                  — it re-opens the exact hole CSP exists to close.
+                </>
+              ),
+            },
+            {
+              label: 'Defence-in-depth, not the fix',
+              tone: 'fail',
+              body: (
+                <>
+                  CSP does not <em>fix</em> XSS — it limits what an injection can do once it's there. The actual fix is output encoding
+                  and not building HTML from untrusted strings (that's L7 territory). CSP is the seatbelt: you still drive carefully,
+                  but it catches the crash you didn't prevent. The honest framing: these headers are cheap and you should set all of
+                  them, but only nosniff/XFO/HSTS are genuinely "set once, forget". CSP is an ongoing relationship with your own app's
+                  network behaviour.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">CSP — the one that's actually hard</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Why CSP is the header people get wrong</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                HSTS, XFO, nosniff are one fixed line each — set and forget. CSP has to model every script, style, font, image, and connection your app actually makes. Get it too strict and the app breaks in the browser (but not in dev, if dev skips the header); get it too loose and it's theatre.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Ship it in <InlineCode>Content-Security-Policy-Report-Only</InlineCode> first: the browser reports violations to a <InlineCode>report-uri</InlineCode> endpoint without blocking anything. Watch the reports, tighten, then flip to enforcing. <InlineCode>'unsafe-inline'</InlineCode> in <InlineCode>script-src</InlineCode> is the line to never accept — it re-opens the exact hole CSP exists to close.
-              </p>
-            </div>
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Defence-in-depth, not the fix</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                CSP does not <em>fix</em> XSS — it limits what an injection can do once it's there. The actual fix is output encoding and not building HTML from untrusted strings (that's L7 territory). CSP is the seatbelt: you still drive carefully, but it catches the crash you didn't prevent.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                The honest framing: these headers are cheap and you should set all of them, but only nosniff/XFO/HSTS are genuinely "set once, forget". CSP is an ongoing relationship with your own app's network behaviour.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Set HSTS, XFO/frame-ancestors, nosniff, Referrer-Policy, and Permissions-Policy today — they're flat wins. Treat CSP as a project: report-only, observe, tighten, enforce. Run the result through securityheaders.com to catch what you missed.
+          <h4 className="mb-2 font-semibold">Set the flat wins today, treat CSP as a project</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Set HSTS, XFO/frame-ancestors, nosniff, Referrer-Policy, and Permissions-Policy today — they're flat wins. Treat CSP as a
+            project: report-only, observe, tighten, enforce. Run the result through securityheaders.com to catch what you missed.
           </p>
         </Card>
       </Section>
@@ -160,34 +389,54 @@ export default function Layer8() {
           index={3}
           title="Where to put what, on the client"
           description="Five mechanisms, and the choice is driven by three constraints: does it need to reach the server (only cookies do, automatically), how big is it, and who's allowed to read it. Get the last one wrong and you've built an XSS token-exfiltration path; get the first wrong and you're either re-sending data on every request or can't see it server-side at all."
-        >
-          <StorageMatrix />
-        </TopicCard>
+        />
+        <StorageMatrix />
         <StorageDemo />
+        <Steps
+          steps={[
+            { label: 'auth token saved in localStorage' },
+            { label: 'one XSS bug runs a script on the page' },
+            { label: 'localStorage.getItem("token") returns it' },
+            { label: 'attacker exfiltrates it — works from their machine', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">Never: auth token in localStorage.</strong> <InlineCode>localStorage</InlineCode> is
+              plain JS-readable key/value — any script on the page can read it, including an injected one. An{' '}
+              <InlineCode>HttpOnly</InlineCode> cookie can't be read by JS at all — XSS can still <em>use</em> the session in-page, but
+              it can't <em>steal</em> it. "But localStorage is easier" is the trap — easier to write, and easier to exfiltrate. The
+              bearer-token-in-header SPA pattern only earns its keep when the token can't be a cookie (cross-domain API you don't
+              control).
+            </>
+          }
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">The storage choices worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Never: auth token in localStorage</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                <InlineCode>localStorage</InlineCode> is plain JS-readable key/value — <InlineCode>localStorage.getItem('token')</InlineCode> works from any script on the page, including an injected one. One XSS bug and the attacker reads the token and walks away with it; it keeps working from their machine. An <InlineCode>HttpOnly</InlineCode> cookie can't be read by JS at all — XSS can still <em>use</em> the session in-page, but it can't <em>steal</em> it.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                "But localStorage is easier" is the trap — easier to write, and easier to exfiltrate. The bearer-token-in-header SPA pattern only earns its keep when the token can't be a cookie (cross-domain API you don't control).
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">localStorage is synchronous — and that's a footgun</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Every <InlineCode>localStorage</InlineCode> read/write blocks the main thread, and it's string-only — storing an object means <InlineCode>JSON.parse</InlineCode> on every read. Stuff a few hundred KB in there and parse it on each render and you've built jank into your app. It also throws (doesn't return null) when full or in private mode.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Anything beyond a few small keys belongs in <InlineCode>IndexedDB</InlineCode>: async, structured, holds GBs, doesn't block paint. Use <InlineCode>sessionStorage</InlineCode> (not local) for per-tab draft/wizard state so two tabs don't clobber each other. <InlineCode>Cache API</InlineCode> is for response objects, driven from a service worker — see 8.6.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Decision shortcut: needs to authenticate a request → <InlineCode>HttpOnly</InlineCode> cookie. Small client-only preference → <InlineCode>localStorage</InlineCode>. Per-tab transient state → <InlineCode>sessionStorage</InlineCode>. Large or offline data → <InlineCode>IndexedDB</InlineCode>. Cached HTTP responses → <InlineCode>Cache API</InlineCode>. None of the JS-readable stores are private — treat everything in them as readable by any script you load, including a compromised dependency.
+          <h4 className="mb-2 font-semibold">localStorage is synchronous — and that's a footgun</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Every <InlineCode>localStorage</InlineCode> read/write blocks the main thread, and it's string-only — storing an object
+            means <InlineCode>JSON.parse</InlineCode> on every read. Stuff a few hundred KB in there and parse it on each render and
+            you've built jank into your app. It also throws (doesn't return null) when full or in private mode. Anything beyond a few
+            small keys belongs in <InlineCode>IndexedDB</InlineCode>: async, structured, holds GBs, doesn't block paint. Use{' '}
+            <InlineCode>sessionStorage</InlineCode> (not local) for per-tab draft/wizard state so two tabs don't clobber each other.{' '}
+            <InlineCode>Cache API</InlineCode> is for response objects, driven from a service worker — see 8.6.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            { label: 'Authenticate a request', tone: 'a', body: <><InlineCode>HttpOnly</InlineCode> cookie — sent automatically, unreadable by JS.</> },
+            { label: 'Small client-only preference', tone: 'b', body: <><InlineCode>localStorage</InlineCode> — persists forever, synchronous, string-only.</> },
+            { label: 'Per-tab transient state', tone: 'c', body: <><InlineCode>sessionStorage</InlineCode> — wizard/draft state, dies on tab close, isolated per tab.</> },
+            { label: 'Large or offline data', tone: 'a', body: <><InlineCode>IndexedDB</InlineCode> — async, structured, holds GBs, doesn't block paint.</> },
+            { label: 'Cached HTTP responses', tone: 'b', body: <><InlineCode>Cache API</InlineCode> — response objects, driven from a service worker (8.6).</> },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">None of the JS-readable stores are private</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Treat everything in <InlineCode>localStorage</InlineCode>, <InlineCode>sessionStorage</InlineCode>,{' '}
+            <InlineCode>IndexedDB</InlineCode>, and <InlineCode>Cache API</InlineCode> as readable by any script you load, including a
+            compromised dependency. The decision shortcut above is also a security boundary: only the <InlineCode>HttpOnly</InlineCode>{' '}
+            cookie is out of JS's reach.
           </p>
         </Card>
       </Section>
@@ -198,42 +447,127 @@ export default function Layer8() {
           index={4}
           title="From bytes to pixels"
           description="Think of it as a compile step the browser re-runs to put a frame on screen: HTML → DOM, CSS → CSSOM, combined into a render tree, then layout (where is every box) → paint (fill pixels into layers) → composite (GPU stitches layers to screen). The skill is knowing which stage your change re-triggers — because to hit 60fps the browser has ~16ms per frame for all of it."
-        >
-          <Bullets
-            items={[
-              <>A <InlineCode>{'<script>'}</InlineCode> blocks the parser: the browser stops building the DOM until the script downloads and runs, because the script might call <InlineCode>document.write</InlineCode>. <InlineCode>defer</InlineCode> runs it after parsing, in order; <InlineCode>async</InlineCode> runs it the moment it arrives, out of order. Failure mode: a render-blocking <InlineCode>{'<script src>'}</InlineCode> in <InlineCode>{'<head>'}</InlineCode> with no attribute pushes back first paint by its entire download time.</>,
-              <>CSS blocks <em>rendering</em> (not parsing): the browser won't paint until the CSSOM is complete, because painting with half the styles would flash unstyled content. So a big <InlineCode>{'<link rel=stylesheet>'}</InlineCode> is on the critical path — inline the above-the-fold CSS, load the rest with a non-blocking pattern. CSS is also implicitly render-blocking for any deferred script that follows it.</>,
-              <><strong>Reflow (layout)</strong> — changing geometry (<InlineCode>width</InlineCode>, <InlineCode>height</InlineCode>, <InlineCode>top</InlineCode>, <InlineCode>font-size</InlineCode>, adding a node) forces the browser to recompute box positions, and because boxes affect their siblings and children it can cascade across the page, then re-paint, then re-composite. The most expensive path. Animating <InlineCode>width</InlineCode> runs this <em>every frame</em>.</>,
-              <><strong>Repaint</strong> — changing a paint-only property (<InlineCode>color</InlineCode>, <InlineCode>background-color</InlineCode>, <InlineCode>box-shadow</InlineCode>) skips layout but still re-rasterizes pixels for the affected layer. <strong>Composite-only</strong> — <InlineCode>transform</InlineCode> and <InlineCode>opacity</InlineCode> change only how an existing, already-painted layer is positioned/blended by the GPU. No layout, no paint. This is the only path that reliably holds 60fps.</>,
-              <>The why, concretely: animate a sidebar open with <InlineCode>width: 0 → 300px</InlineCode> and every frame is a full reflow of everything next to it — on a mid-range phone that's dropped frames and visible stutter. Animate the same motion with <InlineCode>transform: translateX(-300px) → 0</InlineCode> and it's compositor-only, runs on the GPU, stays smooth. Same visual result, completely different cost profile. "React is janky" is usually this.</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <RenderPipeline />
+        <Compare
+          items={[
+            {
+              label: '<script> blocks the parser',
+              tone: 'warn',
+              body: (
+                <>
+                  The browser stops building the DOM until the script downloads and runs, because the script might call{' '}
+                  <InlineCode>document.write</InlineCode>. <InlineCode>defer</InlineCode> runs it after parsing, in order;{' '}
+                  <InlineCode>async</InlineCode> runs it the moment it arrives, out of order. Failure mode: a render-blocking{' '}
+                  <InlineCode>{'<script src>'}</InlineCode> in <InlineCode>{'<head>'}</InlineCode> with no attribute pushes back first
+                  paint by its entire download time.
+                </>
+              ),
+            },
+            {
+              label: 'CSS blocks rendering',
+              tone: 'b',
+              body: (
+                <>
+                  CSS blocks <em>rendering</em> (not parsing): the browser won't paint until the CSSOM is complete, because painting
+                  with half the styles would flash unstyled content. So a big <InlineCode>{'<link rel=stylesheet>'}</InlineCode> is on
+                  the critical path — inline the above-the-fold CSS, load the rest with a non-blocking pattern. CSS is also implicitly
+                  render-blocking for any deferred script that follows it.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'Reflow (layout) — most expensive',
+              tone: 'fail',
+              body: (
+                <>
+                  Changing geometry (<InlineCode>width</InlineCode>, <InlineCode>height</InlineCode>, <InlineCode>top</InlineCode>,{' '}
+                  <InlineCode>font-size</InlineCode>, adding a node) forces the browser to recompute box positions, and because boxes
+                  affect their siblings and children it can cascade across the page, then re-paint, then re-composite. The most
+                  expensive path. Animating <InlineCode>width</InlineCode> runs this <em>every frame</em>.
+                </>
+              ),
+            },
+            {
+              label: 'Repaint — skips layout',
+              tone: 'warn',
+              body: (
+                <>
+                  Changing a paint-only property (<InlineCode>color</InlineCode>, <InlineCode>background-color</InlineCode>,{' '}
+                  <InlineCode>box-shadow</InlineCode>) skips layout but still re-rasterizes pixels for the affected layer.
+                </>
+              ),
+            },
+            {
+              label: 'Composite-only — holds 60fps',
+              tone: 'c',
+              body: (
+                <>
+                  <InlineCode>transform</InlineCode> and <InlineCode>opacity</InlineCode> change only how an existing, already-painted
+                  layer is positioned/blended by the GPU. No layout, no paint. This is the only path that reliably holds 60fps.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'animate sidebar with width: 0 → 300px' },
+            { label: 'every frame is a full reflow of everything next to it' },
+            { label: 'mid-range phone: dropped frames, visible stutter', tone: 'fail' },
+            { label: 'switch to transform: translateX(-300px) → 0' },
+            { label: 'compositor-only, runs on GPU, stays smooth', tone: 'ok' },
+          ]}
+          caption={
+            <>
+              The why, concretely: same visual result, completely different cost profile. Animating geometry reflows everything
+              adjacent; animating <InlineCode>transform</InlineCode> is compositor-only. "React is janky" is usually this.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: 'loop over a list of elements' },
+            { label: 'write a style' },
+            { label: 'read offsetWidth — forces a layout flush now' },
+            { label: 'repeat — O(n) full reflows instead of one', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">Layout thrash (forced synchronous reflow).</strong> The browser batches layout — it
+              wants to do one reflow per frame. But reading a geometric property (<InlineCode>offsetWidth</InlineCode>,{' '}
+              <InlineCode>getBoundingClientRect</InlineCode>, <InlineCode>scrollTop</InlineCode>) forces it to flush <em>now</em> so the
+              answer is correct. Fix: batch all reads, then all writes (read-then-write, never interleaved). This is what libraries
+              like FastDOM do, and what React's render/commit split is partly for.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: 'a 200ms synchronous loop runs (big JSON parse, heavy render)' },
+            { label: 'rendering and your JS share one thread' },
+            { label: 'browser can’t produce a frame or respond to a click for 200ms', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-amber-200">Long task blocks the frame.</strong> That's the jank, and it's what the INP Web
+              Vital measures. Fix: break the work up (yield to the browser between chunks), or move pure CPU work to a Web Worker
+              (8.7) so the main thread stays free to render and handle input. The compositor can still scroll a composite-only
+              animation even while the main thread is busy — another reason transform/opacity animations survive jank.
+            </>
+          }
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">The rendering failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Layout thrash (forced synchronous reflow)</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                The browser batches layout — it wants to do one reflow per frame. But reading a geometric property (<InlineCode>offsetWidth</InlineCode>, <InlineCode>getBoundingClientRect</InlineCode>, <InlineCode>scrollTop</InlineCode>) forces it to flush <em>now</em> so the answer is correct. A loop that does <em>write → read → write → read</em> over a list of elements triggers a fresh full reflow on every iteration — O(n) layouts instead of one.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Fix: batch all reads, then all writes (read-then-write, never interleaved). This is what libraries like FastDOM do, and what React's render/commit split is partly for.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Long task blocks the frame</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Rendering and your JS share one thread. A 200ms synchronous loop (parsing a big JSON, a heavy render) means the browser physically cannot produce a frame or respond to a click for 200ms — that's the jank, and it's what the INP Web Vital measures.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Fix: break the work up (yield to the browser between chunks), or move pure CPU work to a Web Worker (8.7) so the main thread stays free to render and handle input. The compositor can still scroll a composite-only animation even while the main thread is busy — another reason transform/opacity animations survive jank.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Rule of thumb: to find what a style change costs, ask which stage it re-enters — layout (worst), paint (bad), composite (cheap). Animate <InlineCode>transform</InlineCode>/<InlineCode>opacity</InlineCode>, never <InlineCode>width</InlineCode>/<InlineCode>top</InlineCode>; promote a heavily-animated element to its own layer with <InlineCode>will-change: transform</InlineCode> (sparingly — each layer costs GPU memory). SSR/SEO rendering strategy is a different question — that's L10.
+          <h4 className="mb-2 font-semibold">Rule of thumb: ask which stage a change re-enters</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            To find what a style change costs, ask which stage it re-enters — layout (worst), paint (bad), composite (cheap). Animate{' '}
+            <InlineCode>transform</InlineCode>/<InlineCode>opacity</InlineCode>, never <InlineCode>width</InlineCode>/<InlineCode>top</InlineCode>;
+            promote a heavily-animated element to its own layer with <InlineCode>will-change: transform</InlineCode> (sparingly — each
+            layer costs GPU memory). SSR/SEO rendering strategy is a different question — that's L10.
           </p>
         </Card>
       </Section>
@@ -244,18 +578,90 @@ export default function Layer8() {
           index={5}
           title="A scriptable proxy that lives in the browser"
           description="A service worker is a JS file that sits between your page and the network — every fetch your app makes can be intercepted, served from cache, or rewritten. It's a reverse proxy you ship to the client. That power is also the danger: it's the one piece of code that can keep serving a stale version of your app after you've deployed a fix."
-        >
-          <Bullets
-            items={[
-              <>Lifecycle: <strong>install</strong> (pre-cache your asset shell) → <strong>activate</strong> (the new worker takes control; purge old caches here) → <strong>fetch</strong> (proxy every request) → idle (the browser kills it to save memory and respawns it on the next event — so a SW holds <em>no</em> in-memory state between events).</>,
-              <>The gotcha that bites everyone: by default a new SW <strong>waits</strong> — it installs but doesn't activate until every tab using the old one is closed. So a user with your site pinned can run a weeks-old worker. <InlineCode>skipWaiting()</InlineCode> + <InlineCode>clients.claim()</InlineCode> forces immediate takeover, but then the new SW is serving a page that loaded against the old one — version your caches and design for it.</>,
-              <>Cache strategy by resource: <strong>cache-first</strong> for content-hashed immutable assets (<InlineCode>app.a1b2c3.js</InlineCode> — the URL changes when the content does, so a stale hit is impossible). <strong>Network-first</strong> for HTML (you want the latest, fall back to cache offline). <strong>Stale-while-revalidate</strong> for API data you can tolerate being a few seconds old — serve cache instantly, refresh in the background.</>,
-              <>Cache-first on a URL that <em>isn't</em> content-hashed is the classic SW bug: you cache <InlineCode>/app.js</InlineCode>, deploy a fix, and users keep getting the old file forever because the SW never asks the network again. The <InlineCode>activate</InlineCode> handler deleting old cache versions is not optional cleanup — it's how you ship updates.</>,
-              <>PWA = web app manifest (name, icons, <InlineCode>start_url</InlineCode>, <InlineCode>display</InlineCode>) + a service worker + HTTPS. That trio makes the browser offer "install to home screen" and run it in a standalone window. It's only worth the maintenance cost when offline use or home-screen presence is a real product requirement — a service worker you ship and forget is a stale-content bug with a countdown.</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <ServiceWorkerLifecycle />
+        <Steps
+          steps={[
+            { label: 'install — pre-cache your asset shell' },
+            { label: 'activate — new worker takes control; purge old caches' },
+            { label: 'fetch — proxy every request' },
+            { label: 'idle — browser kills it; respawns on next event' },
+          ]}
+          caption={
+            <>
+              <strong>The lifecycle.</strong> The browser kills an idle SW to save memory and respawns it on the next event — so a SW
+              holds <em>no</em> in-memory state between events. Treat every handler as cold-start.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: 'you deploy a new SW' },
+            { label: 'it installs but waits — old SW still controls open tabs' },
+            { label: 'user with your site pinned never closes every tab' },
+            { label: 'they run a weeks-old worker', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">The waiting gotcha that bites everyone.</strong> By default a new SW{' '}
+              <strong>waits</strong> — it installs but doesn't activate until every tab using the old one is closed.{' '}
+              <InlineCode>skipWaiting()</InlineCode> + <InlineCode>clients.claim()</InlineCode> forces immediate takeover, but then the
+              new SW is serving a page that loaded against the old one — version your caches and design for it.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Cache-first',
+              tone: 'c',
+              body: (
+                <>
+                  For content-hashed immutable assets (<InlineCode>app.a1b2c3.js</InlineCode> — the URL changes when the content does,
+                  so a stale hit is impossible). Serve from cache, never touch the network.
+                </>
+              ),
+            },
+            {
+              label: 'Network-first',
+              tone: 'a',
+              body: <>For HTML — you want the latest, fall back to cache offline.</>,
+            },
+            {
+              label: 'Stale-while-revalidate',
+              tone: 'b',
+              body: (
+                <>
+                  For API data you can tolerate being a few seconds old — serve cache instantly, refresh in the background.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'cache-first on a URL that isn’t content-hashed (/app.js)' },
+            { label: 'you deploy a fix' },
+            { label: 'SW never asks the network again' },
+            { label: 'users get the old file forever', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">The classic SW bug.</strong> The <InlineCode>activate</InlineCode> handler deleting
+              old cache versions is not optional cleanup — it's how you ship updates. Cache-first is only safe on URLs whose content
+              can't change under them.
+            </>
+          }
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">PWA = manifest + service worker + HTTPS</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            A web app manifest (name, icons, <InlineCode>start_url</InlineCode>, <InlineCode>display</InlineCode>) + a service worker +
+            HTTPS. That trio makes the browser offer "install to home screen" and run it in a standalone window. It's only worth the
+            maintenance cost when offline use or home-screen presence is a real product requirement — a service worker you ship and
+            forget is a stale-content bug with a countdown.
+          </p>
+        </Card>
         <CodePlayground
           mode="js"
           height={220}
@@ -293,27 +699,46 @@ console.log('SW source — copy to /sw.js to make this real.');`}
           index={6}
           title="The platform you already have"
           description="Most of these existed as npm packages first, then the browser absorbed them. Reaching for the platform API instead means zero bundle cost, no dependency to maintain, and native performance — but it also means feature-detecting and degrading gracefully, because support is uneven for the newer ones."
-        >
-          <WebApiGrid />
-        </TopicCard>
+        />
+        <WebApiGrid />
+        <Compare
+          items={[
+            {
+              label: 'Observers replace scroll/resize handlers',
+              tone: 'c',
+              body: (
+                <>
+                  The old way to lazy-load or trigger on-scroll was a <InlineCode>scroll</InlineCode> listener calling{' '}
+                  <InlineCode>getBoundingClientRect</InlineCode> on every event — which forces synchronous layout (see 8.5's layout
+                  thrash) dozens of times a second. <InlineCode>IntersectionObserver</InlineCode> moves that calculation off the main
+                  thread: the browser tells you when an element crosses the viewport, batched and cheap.{' '}
+                  <InlineCode>ResizeObserver</InlineCode> does the same for element size, which is what makes container queries
+                  possible.
+                </>
+              ),
+            },
+            {
+              label: 'Workers, WebAuthn, View Transitions',
+              tone: 'warn',
+              body: (
+                <>
+                  <strong>Web Workers</strong> run JS on a separate thread — the only real fix for a CPU task that would otherwise
+                  block rendering (8.5); the cost is they can't touch the DOM and you talk to them by message-passing.{' '}
+                  <strong>WebAuthn</strong> is passwordless via a hardware key or biometric — the credential is bound to your origin,
+                  so it's phishing-resistant by construction. <strong>View Transitions</strong> animate between DOM states with the
+                  compositor instead of hand-written JS animation.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">Why these beat the library — and where they bite</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Observers replace scroll/resize handlers</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                The old way to lazy-load or trigger on-scroll was a <InlineCode>scroll</InlineCode> listener calling <InlineCode>getBoundingClientRect</InlineCode> on every event — which forces synchronous layout (see 8.5's layout thrash) dozens of times a second. <InlineCode>IntersectionObserver</InlineCode> moves that calculation off the main thread: the browser tells you when an element crosses the viewport, batched and cheap. <InlineCode>ResizeObserver</InlineCode> does the same for element size, which is what makes container queries possible.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Workers, WebAuthn, View Transitions</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                <strong>Web Workers</strong> run JS on a separate thread — the only real fix for a CPU task that would otherwise block rendering (8.5); the cost is they can't touch the DOM and you talk to them by message-passing. <strong>WebAuthn</strong> is passwordless via a hardware key or biometric — the credential is bound to your origin, so it's phishing-resistant by construction. <strong>View Transitions</strong> animate between DOM states with the compositor instead of hand-written JS animation.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            The discipline: feature-detect (<InlineCode>{"if ('IntersectionObserver' in window)"}</InlineCode>), then enhance — never assume. Some APIs (Background Sync, File System Access, Periodic Sync) are still Chromium-only, so they must be a progressive enhancement, not a load-bearing dependency. The payoff is real: every API you use from the platform is one you don't ship, version, or patch.
+          <h4 className="mb-2 font-semibold">The discipline: feature-detect, then enhance</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Feature-detect (<InlineCode>{"if ('IntersectionObserver' in window)"}</InlineCode>), then enhance — never assume. Some APIs
+            (Background Sync, File System Access, Periodic Sync) are still Chromium-only, so they must be a progressive enhancement,
+            not a load-bearing dependency. The payoff is real: every API you use from the platform is one you don't ship, version, or
+            patch.
           </p>
         </Card>
         <CodePlayground

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FlaskConical, AlertTriangle, ShieldAlert, Database, Play, RotateCcw } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat } from '../components/UI';
+import { Section, TopicCard, InlineCode, Card, Stat, Steps, Compare } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
 import { cn } from '../lib/cn';
@@ -19,17 +19,63 @@ export default function Layer11() {
           index={0}
           title="Lots of fast tests, fewer slow ones"
           description="The shape of your suite decides where your confidence comes from. The pyramid buys fast, stable feedback by putting most tests at the unit layer. The trophy argues that's a false economy — most real bugs live at the seams, so the integration layer is where confidence-per-test is highest."
-        >
-          <Bullets
-            items={[
-              <>The pyramid's failure mode is concrete: a unit test that mocks the DB, the HTTP client, and the auth layer asserts that your function calls its <em>mocks</em> correctly. It stays green while the SQL is malformed, the API URL is wrong, and the token never validates. 100% green, prod is down — the test never touched a real seam.</>,
-              <>The trophy reorders the spend: <strong className="text-ink">static</strong> (TS strict + lint catches typos and undefined access for free) → <strong className="text-ink">integration</strong> (the bulk — real DB, real router, real serialization) → <strong className="text-ink">unit</strong> (pure logic only) → a few <strong className="text-ink">E2E</strong>. Same triangle, weight moved down to where bugs actually are.</>,
-              <>E2E is always a thin cap — a handful of revenue-critical happy paths. It's slow (browser + full stack per test) and flaky (timing, network), and when it fails it tells you <em>something</em> broke, not <em>what</em>. Never your bulk coverage; it's a smoke alarm, not a microscope.</>,
-              <>Pick by codebase shape: a parser/calculator/rules-engine is mostly pure logic → the pyramid is honest. A typical SaaS backend is mostly wiring — DB, auth, third parties → the trophy wins, because an integration test against an ephemeral Postgres is the highest-confidence test you can buy per minute spent.</>,
-            ]}
-          />
-          <PyramidComparator />
-        </TopicCard>
+        />
+        <PyramidComparator />
+        <Steps
+          steps={[
+            { label: 'unit test mocks the DB, HTTP client, auth' },
+            { label: 'asserts the function calls its mocks correctly', tone: 'ok' },
+            { label: 'SQL is malformed, API URL is wrong, token never validates' },
+            { label: '100% green, prod is down', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">The pyramid's failure mode, concretely.</strong> A heavily-mocked unit test verifies
+              your function talks to its <em>mocks</em> correctly — it stays green while every real seam is broken. The test never
+              touched a real DB, a real router, or a real token. That's the trophy's whole argument: confidence lives in seams, not
+              lines.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'The pyramid — when',
+              tone: 'a',
+              body: (
+                <>
+                  Most tests at the unit layer because unit tests are fast and stable; a thin E2E cap because E2E is slow and flaky.
+                  Honest when the codebase is mostly <em>pure logic</em> — a parser, a calculator, a rules-engine, a state machine.
+                  There the unit layer <em>is</em> where the bugs are, so weighting it is correct.
+                </>
+              ),
+            },
+            {
+              label: 'The trophy — when',
+              tone: 'c',
+              body: (
+                <>
+                  Reorders the spend: <strong className="text-ink">static</strong> (TS strict + lint catches typos and undefined
+                  access for free) → <strong className="text-ink">integration</strong> (the bulk — real DB, real router, real
+                  serialization) → <strong className="text-ink">unit</strong> (pure logic only) → a few <strong className="text-ink">E2E</strong>.
+                  Wins for a typical SaaS backend, which is mostly <em>wiring</em> — DB, auth, third parties. An integration test
+                  against an ephemeral Postgres is the highest-confidence test you can buy per minute spent.
+                </>
+              ),
+            },
+            {
+              label: 'E2E — always a thin cap',
+              tone: 'fail',
+              body: (
+                <>
+                  A handful of revenue-critical happy paths, never your bulk coverage. Slow (browser + full stack per test) and flaky
+                  (timing, network), and when it fails it tells you <em>something</em> broke, not <em>what</em>. It's a smoke alarm,
+                  not a microscope — true in both the pyramid and the trophy.
+                </>
+              ),
+            },
+          ]}
+        />
       </Section>
 
       <Section id="doubles" kicker="11.2" title="Test Doubles">
@@ -38,17 +84,63 @@ export default function Layer11() {
           index={1}
           title="Mock, stub, fake, spy — they're not the same"
           description="The words name different verification strategies, not interchangeable jargon. The choice decides what your test is coupled to — and a test coupled to implementation breaks on every refactor while catching no real bug."
-        >
-          <Bullets
-            items={[
-              <><strong className="text-ink">Stub vs mock</strong> is the distinction that matters most. A stub is a passive value-provider — it answers <InlineCode>charge() → {'{ ok: true }'}</InlineCode> and verifies nothing. A mock encodes a <em>protocol expectation</em> — "charge must be called once, with amount 99" — and fails the test if the SUT doesn't. Reach for a mock <em>only</em> when the interaction itself is the behavior under test (did we actually call the payment provider?). Otherwise a stub.</>,
-              <><strong className="text-ink">Fake vs mock</strong> is the other live choice. A fake is a real, simpler implementation — an in-memory repository, a fake clock — that behaves correctly across many calls. Prefer a fake when the collaborator is used realistically throughout the test; you verify by observing final state. Prefer a mock when one specific call is the assertion. A fake repository survives a refactor; ten mock expectations don't.</>,
-              <>The over-mocking trap: rename a method, split one call into two, reorder arguments — behavior unchanged, but every mock with a baked-in expectation goes red. You now have tests that fail on <em>refactor</em>, not on <em>regression</em>. That's negative value: friction with no safety.</>,
-              <>Rule of thumb: use the <em>smallest</em> double that isolates the code under test. Dummy &lt; stub &lt; spy &lt; fake &lt; mock in coupling cost. Never mock the database to "test a query" — you'd be asserting your mock returns what you told it to (defer real query craft to L14, but never mock it away here).</>,
-            ]}
-          />
-          <TestDoubleMatrix />
-        </TopicCard>
+        />
+        <TestDoubleMatrix />
+        <Compare
+          items={[
+            {
+              label: 'Stub vs mock',
+              tone: 'a',
+              body: (
+                <>
+                  The distinction that matters most. A <strong className="text-ink">stub</strong> is a passive value-provider — it
+                  answers <InlineCode>charge() → {'{ ok: true }'}</InlineCode> and verifies nothing. A <strong className="text-ink">mock</strong>{' '}
+                  encodes a <em>protocol expectation</em> — "charge must be called once, with amount 99" — and fails the test if the
+                  SUT doesn't. Reach for a mock <em>only</em> when the interaction itself is the behavior under test (did we actually
+                  call the payment provider?). Otherwise a stub.
+                </>
+              ),
+            },
+            {
+              label: 'Fake vs mock',
+              tone: 'b',
+              body: (
+                <>
+                  The other live choice. A <strong className="text-ink">fake</strong> is a real, simpler implementation — an in-memory
+                  repository, a fake clock — that behaves correctly across many calls. Prefer a fake when the collaborator is used
+                  realistically throughout the test; you verify by observing final state. Prefer a mock when one specific call is the
+                  assertion. A fake repository survives a refactor; ten mock expectations don't.
+                </>
+              ),
+            },
+            {
+              label: 'Smallest double wins',
+              tone: 'c',
+              body: (
+                <>
+                  Rule of thumb: use the <em>smallest</em> double that isolates the code under test. Dummy &lt; stub &lt; spy &lt;
+                  fake &lt; mock in coupling cost. Never mock the database to "test a query" — you'd be asserting your mock returns
+                  what you told it to (defer real query craft to L14, but never mock it away here).
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'rename a method / split one call / reorder args' },
+            { label: 'behavior unchanged', tone: 'ok' },
+            { label: 'every mock with a baked-in expectation goes red' },
+            { label: 'tests fail on refactor, not on regression', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">The over-mocking trap.</strong> A test that goes red when you <em>refactor</em> —
+              not when you <em>regress</em> — is negative value: friction with no safety. You'll eventually delete it in
+              frustration, which means it was never protecting anything.
+            </>
+          }
+        />
         <CodePlayground
           mode="js"
           height={240}
@@ -96,17 +188,60 @@ console.log('fake recorded:', fake.charges);`}
           index={2}
           title="Tests before code, in tight loops"
           description="Write a failing test, write the minimum code to pass it, refactor under the safety net. TDD isn't really about tests — it's a design technique: writing the test first forces you to use your API before you build it, and the suite is a side effect that happens to catch regressions later."
-        >
-          <Bullets
-            items={[
-              <>The discipline is the <strong className="text-ink">micro-loop</strong>: one failing test → the minimum (even shameless — <InlineCode>return 3</InlineCode>) code to pass → refactor → next test. Ten tests then code is just test-after with extra ceremony; you lose the design feedback, which was the whole point.</>,
-              <><strong className="text-ink">When it shines:</strong> well-understood problems with namable inputs and outputs — business rules, parsers, calculators, a state machine. You can write the assertion because you know the answer. <strong className="text-ink">When it hurts:</strong> UI and product exploration where you're discovering what you want — TDD assumes you can name the expected output, and you can't yet.</>,
-              <>The "minimum code to pass" feels absurd but is load-bearing: it proves the <em>test</em> can fail and then pass for the right reason. A test that was never red proves nothing — it might pass against an empty function.</>,
-              <>Keep refactor commits separate from behavior commits (Kent Beck, "Tidy First?"). A diff that renames variables <em>and</em> changes logic is unreviewable — the reviewer can't tell the safe change from the risky one. Structure first, behavior second, two commits.</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <TddCycle />
+        <Steps
+          steps={[
+            { label: 'one failing test', tone: 'fail' },
+            { label: 'minimum code to pass — even shameless return 3', tone: 'ok' },
+            { label: 'refactor under the green' },
+            { label: 'next test' },
+          ]}
+          caption={
+            <>
+              <strong className="text-ink">The micro-loop is the discipline.</strong> Ten tests then code is just test-after with
+              extra ceremony — you lose the design feedback, which was the whole point. The "minimum code to pass" feels absurd but
+              is load-bearing: it proves the <em>test</em> can fail and then pass for the right reason. A test that was never red
+              proves nothing — it might pass against an empty function.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'When TDD shines',
+              tone: 'c',
+              body: (
+                <>
+                  Well-understood problems with namable inputs and outputs — business rules, parsers, calculators, a state machine.
+                  You can write the assertion <em>because you already know the answer</em>. The test-first step turns that knowledge
+                  into a design probe of your own API.
+                </>
+              ),
+            },
+            {
+              label: 'When TDD hurts',
+              tone: 'warn',
+              body: (
+                <>
+                  UI and product exploration where you're discovering what you want. TDD assumes you can name the expected output —
+                  and you can't yet. Forcing a red test here just locks in a guess you haven't validated.
+                </>
+              ),
+            },
+            {
+              label: 'Two commits, never one',
+              tone: 'a',
+              body: (
+                <>
+                  Keep refactor commits separate from behavior commits (Kent Beck, "Tidy First?"). A diff that renames variables{' '}
+                  <em>and</em> changes logic is unreviewable — the reviewer can't tell the safe change from the risky one. Structure
+                  first, behavior second.
+                </>
+              ),
+            },
+          ]}
+        />
       </Section>
 
       <Section id="contract" kicker="11.4" title="Contract Testing">
@@ -115,17 +250,60 @@ console.log('fake recorded:', fake.charges);`}
           index={3}
           title="Tests that prove two services agree"
           description="Two services with an HTTP or event interface between them can drift independently — the provider renames a field, the consumer still expects the old one, and nothing fails until prod. Contract testing catches that drift in each service's own CI, without standing up the whole stack."
-        >
-          <Bullets
-            items={[
-              <><strong className="text-ink">Consumer-driven</strong> is the key idea. The consumer writes "when I send X I expect Y" against a local stub → that generates a <em>pact file</em> (JSON) → the provider's CI replays every consumer's expectations against its <em>real</em> implementation. If the provider's response no longer matches, the provider build goes red — before the deploy, not after.</>,
-              <>Contract test vs E2E: an E2E through both services proves they work together but is slow, flaky, and when it breaks it doesn't tell you <em>which</em> side is wrong. A contract test localizes the break to one repo and runs in milliseconds. Use contract tests for the <em>interface</em>, a couple of E2E for the critical <em>journey</em> — they answer different questions.</>,
-              <>It only covers the shape of the interaction — status, headers, body schema. It does <em>not</em> prove the provider's logic is correct, just that it still speaks the agreed protocol. You still need the provider's own integration tests for "is the data right".</>,
-              <>When <em>not</em> to bother: a single monolith (no interface to drift), or a third-party API you don't control (you can't add a test to their CI — use a recorded/replayed fixture and a periodic real smoke test instead).</>,
-            ]}
-          />
-          <ContractTestDemo />
-        </TopicCard>
+        />
+        <ContractTestDemo />
+        <Steps
+          steps={[
+            { label: 'consumer writes "when I send X I expect Y" vs a local stub' },
+            { label: 'that generates a pact file (JSON)' },
+            { label: "provider's CI replays every consumer's expectations vs the real impl" },
+            { label: "provider's response no longer matches → build red, before deploy", tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-ink">Consumer-driven is the key idea.</strong> The drift is caught in the provider's own CI,
+              before the deploy — not after, in prod. The contract is generated from how the consumer actually uses the interface,
+              so it's never aspirational.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Contract test — the interface',
+              tone: 'a',
+              body: (
+                <>
+                  Localizes a break to one repo and runs in milliseconds. Use it for the <em>interface</em> — does the provider still
+                  speak the agreed protocol. But it only covers the <em>shape</em> of the interaction (status, headers, body schema);
+                  it does <em>not</em> prove the provider's logic is correct. You still need the provider's own integration tests for
+                  "is the data right".
+                </>
+              ),
+            },
+            {
+              label: 'E2E — the journey',
+              tone: 'warn',
+              body: (
+                <>
+                  An E2E through both services proves they work together, but it's slow, flaky, and when it breaks it doesn't tell
+                  you <em>which</em> side is wrong. Keep a couple for the critical <em>journey</em> — they answer a different question
+                  than contract tests.
+                </>
+              ),
+            },
+            {
+              label: "When not to bother",
+              tone: 'fail',
+              body: (
+                <>
+                  A single monolith has no interface to drift. A third-party API you don't control can't take a test in <em>their</em>{' '}
+                  CI — use a recorded/replayed fixture plus a periodic real smoke test instead.
+                </>
+              ),
+            },
+          ]}
+        />
       </Section>
 
       <Section id="strategy" kicker="11.5" title="What to test, what to skip">
@@ -134,40 +312,93 @@ console.log('fake recorded:', fake.charges);`}
           index={4}
           title="Coverage is a lie; behavior is what matters"
           description="Coverage measures which lines executed during the test run — not whether any assertion checked they did the right thing. It's a floor (uncovered code is definitely untested) but never a ceiling (covered code may be untested too). Optimize for behavior caught, not lines lit up."
-        >
-          <Bullets
-            items={[
-              <>The proof: <InlineCode>{'it("works", () => { computeTotal(cart); })'}</InlineCode> — calls the function, asserts nothing, and adds 100% coverage of <InlineCode>computeTotal</InlineCode>. A coverage gate would pass this. It catches a crash, nothing else. Coverage % as a quality metric rewards exactly this.</>,
-              <><strong className="text-ink">Test:</strong> business rules, edge cases, regressions (every bug gets a test that would have caught it), public API contracts, security boundaries. These are where a break costs money or trust — high value per test.</>,
-              <><strong className="text-ink">Skip:</strong> trivial getters/setters (you're testing the language), framework internals (the framework's job), third-party libraries (their job), snapshot tests of churn-prone UI (they fail on every intentional change — pure noise that trains you to <InlineCode>--update</InlineCode> blindly).</>,
-              <>The litmus test: would this test fail if <em>behavior</em> changed, or only if <em>implementation</em> changed? The first is a safety net; the second is friction you'll eventually delete in frustration. Test through the public surface, not the private internals.</>,
-              <>Property-based testing (fast-check, Hypothesis) flips the model: instead of you picking examples, it generates hundreds — and on failure <em>shrinks</em> to the minimal reproducing input. Reach for it on wide or fuzzy input spaces — date parsers, serializers, money math — where the bug is always the input you didn't think of.</>,
-            ]}
-          />
-        </TopicCard>
+        />
+        <Steps
+          steps={[
+            { label: 'it("works", () => { computeTotal(cart); })' },
+            { label: 'calls the function, asserts nothing' },
+            { label: 'adds 100% coverage of computeTotal', tone: 'ok' },
+            { label: 'a coverage gate passes it — catches a crash, nothing else', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">The proof coverage is a lie.</strong> Coverage % as a quality metric rewards exactly
+              this test. It's a floor (uncovered code is definitely untested) but never a ceiling (covered code may be untested too).
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Test',
+              tone: 'c',
+              body: (
+                <>
+                  Business rules, edge cases, regressions (every bug gets a test that would have caught it), public API contracts,
+                  security boundaries. These are where a break costs money or trust — high value per test.
+                </>
+              ),
+            },
+            {
+              label: 'Skip',
+              tone: 'fail',
+              body: (
+                <>
+                  Trivial getters/setters (you're testing the language), framework internals (the framework's job), third-party
+                  libraries (their job), snapshot tests of churn-prone UI — they fail on every intentional change, pure noise that
+                  trains you to <InlineCode>--update</InlineCode> blindly.
+                </>
+              ),
+            },
+            {
+              label: 'The litmus test',
+              tone: 'a',
+              body: (
+                <>
+                  Would this test fail if <em>behavior</em> changed, or only if <em>implementation</em> changed? The first is a
+                  safety net; the second is friction you'll eventually delete in frustration. Test through the public surface, not
+                  the private internals.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">Coverage failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Assertion-free coverage</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A test runs the code path but checks nothing meaningful — or only checks it didn't throw. The line is "covered". The behavior is unverified. A coverage gate is fully satisfied by a suite that proves nothing.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                This is why mutation testing exists: it changes <InlineCode>{'>'}</InlineCode> to <InlineCode>{'>='}</InlineCode>, deletes a line, and checks a test <em>fails</em>. A surviving mutant = covered but unasserted code.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The coverage ratchet trap</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Mandate "90% or the build fails" and people write the cheapest tests that hit lines — getters, generated code, assertion-free smoke tests. You've spent real effort and bought near-zero confidence.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Use coverage as a <em>diff</em> signal — "this PR dropped coverage on the payment module, why?" — a conversation starter, not a pass/fail gate. The number is a map, not the territory.
-              </p>
-            </div>
-          </div>
+          <h4 className="mb-2 font-semibold">Property-based testing — generated inputs, not your examples</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Property-based testing (fast-check, Hypothesis) flips the model: instead of you picking examples, it generates hundreds —
+            and on failure <em>shrinks</em> to the minimal reproducing input. Reach for it on wide or fuzzy input spaces — date
+            parsers, serializers, money math — where the bug is always the input you didn't think of.
+          </p>
         </Card>
+        <Compare
+          items={[
+            {
+              label: 'Assertion-free coverage',
+              tone: 'fail',
+              body: (
+                <>
+                  A test runs the code path but checks nothing meaningful — or only checks it didn't throw. The line is "covered".
+                  The behavior is unverified. A coverage gate is fully satisfied by a suite that proves nothing. This is why mutation
+                  testing exists: it changes <InlineCode>{'>'}</InlineCode> to <InlineCode>{'>='}</InlineCode>, deletes a line, and
+                  checks a test <em>fails</em>. A surviving mutant = covered but unasserted code.
+                </>
+              ),
+            },
+            {
+              label: 'The coverage ratchet trap',
+              tone: 'warn',
+              body: (
+                <>
+                  Mandate "90% or the build fails" and people write the cheapest tests that hit lines — getters, generated code,
+                  assertion-free smoke tests. You've spent real effort and bought near-zero confidence. Use coverage as a{' '}
+                  <em>diff</em> signal — "this PR dropped coverage on the payment module, why?" — a conversation starter, not a
+                  pass/fail gate. The number is a map, not the territory.
+                </>
+              ),
+            },
+          ]}
+        />
         <TestPicker />
       </Section>
 
@@ -177,19 +408,69 @@ console.log('fake recorded:', fake.charges);`}
           index={5}
           title="Severity, IC, comms, mitigation, write-up"
           description="An incident is a process problem, not a debugging problem. The goal during one is to restore service — not to understand it. Understanding is the postmortem's job, and it can wait until users aren't down."
-        >
-          <Bullets
-            items={[
-              <><strong className="text-ink">Restore first, root-cause later.</strong> Roll back, scale up, fail over to the replica — the actions that end the impact, even if you don't yet know the cause. Spending 40 minutes reading logs while checkout is 500ing is malpractice: the rollback would have ended it in two. Diagnose <em>after</em> the bleeding stops.</>,
-              <><strong className="text-ink">Severity drives the response, not vice versa.</strong> Classify by blast radius: data loss / corruption / breach → SEV1 always (it's often irreversible). Revenue impact <em>and</em> wide user impact → SEV1. One or the other → SEV2. Narrow or reputational-only → SEV3. Cosmetic → SEV4. The severity decides who you wake and how loud the comms are.</>,
-              <>One person is <strong className="text-ink">Incident Commander</strong> — they coordinate and decide, they don't debug. The moment everyone is heads-down in their own terminal with no one steering, the incident runs you. The IC's job is the runbook, not the fix.</>,
-              <><strong className="text-ink">Comms beat silence.</strong> A status-page update every 15–30 min — even "still investigating, no ETA" — because customers fill silence with worse assumptions (data loss? hacked? gone for good?). Honesty is cheaper than the support load and churn that silence buys.</>,
-              <>Mitigate with the <em>smallest reversible</em> change. Patch, don't rewrite — the fix shipped under pressure should be the one easiest to reason about and revert if it's wrong. The clever refactor is for a calm Tuesday.</>,
-            ]}
-          />
-          <IncidentRunbook />
-          <SeverityCalculator />
-        </TopicCard>
+        />
+        <IncidentRunbook />
+        <SeverityCalculator />
+        <Steps
+          steps={[
+            { label: 'checkout is 500ing' },
+            { label: 'spend 40 min reading logs to find the cause' },
+            { label: 'a rollback would have ended it in 2 min', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">Restore first, root-cause later.</strong> Roll back, scale up, fail over to the
+              replica — the actions that end the impact, even if you don't yet know the cause. Root-causing while users are down is
+              malpractice. Diagnose <em>after</em> the bleeding stops.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Severity drives the response',
+              tone: 'a',
+              body: (
+                <>
+                  Classify by blast radius: data loss / corruption / breach → SEV1 always (it's often irreversible). Revenue impact{' '}
+                  <em>and</em> wide user impact → SEV1. One or the other → SEV2. Narrow or reputational-only → SEV3. Cosmetic → SEV4.
+                  The severity decides who you wake and how loud the comms are — not vice versa.
+                </>
+              ),
+            },
+            {
+              label: 'One Incident Commander',
+              tone: 'b',
+              body: (
+                <>
+                  One person coordinates and decides — they don't debug. The moment everyone is heads-down in their own terminal
+                  with no one steering, the incident runs you. The IC's job is the runbook, not the fix.
+                </>
+              ),
+            },
+            {
+              label: 'Comms beat silence',
+              tone: 'c',
+              body: (
+                <>
+                  A status-page update every 15–30 min — even "still investigating, no ETA" — because customers fill silence with
+                  worse assumptions (data loss? hacked? gone for good?). Honesty is cheaper than the support load and churn that
+                  silence buys.
+                </>
+              ),
+            },
+            {
+              label: 'Smallest reversible fix',
+              tone: 'warn',
+              body: (
+                <>
+                  Mitigate with the smallest reversible change. Patch, don't rewrite — the fix shipped under pressure should be the
+                  one easiest to reason about and revert if it's wrong. The clever refactor is for a calm Tuesday.
+                </>
+              ),
+            },
+          ]}
+        />
       </Section>
 
       <Section id="postmortem" kicker="11.7" title="Blameless Postmortems">
@@ -198,18 +479,61 @@ console.log('fake recorded:', fake.charges);`}
           index={6}
           title="Process bugs, not people bugs"
           description="Blameless isn't about being nice — it's about getting true information. The instant a postmortem can end careers, everyone's incentive flips from 'explain what happened' to 'protect myself', and you lose the data you need to actually fix the system."
-        >
-          <Bullets
-            items={[
-              <>Reframe every "person" cause as a "system" cause. "Bob deployed at 5pm and broke prod" → "the pipeline allowed a deploy with no canary stage on a Friday." Bob acted rationally on the information he had; the <em>system</em> let a known-risky action through unchecked. Fix the system and the next Bob can't repeat it.</>,
-              <>The structure: <strong className="text-ink">summary</strong> (what, severity, root cause, customer impact in concrete numbers — "12% of checkouts, ≈$4,200 GMV"), <strong className="text-ink">timeline in UTC</strong>, <strong className="text-ink">contributing factors</strong> (usually plural — outages are rarely one cause), and <strong className="text-ink">action items</strong>.</>,
-              <>Every action item needs an <strong className="text-ink">owner and a date</strong>. "We should add alerting" is a wish; "@lin adds a connection-error-rate alert by 04-22" is a commitment. An owner-less action item is how the same incident happens twice.</>,
-              <>The only valid outputs are changes to <em>systems, runbooks, and observability</em>. "Be more careful" is not an action item — it's an admission you found no real fix. If the postmortem ends there, you haven't finished it.</>,
-              <>Write it within ~5 business days, while memory is fresh and the urgency hasn't evaporated. A postmortem written a month later is fiction reconstructed from Slack scrollback.</>,
-            ]}
-          />
-          <PostmortemTemplate />
-        </TopicCard>
+        />
+        <PostmortemTemplate />
+        <Steps
+          steps={[
+            { label: '"Bob deployed at 5pm and broke prod"' },
+            { label: 'reframe: Bob acted rationally on what he knew' },
+            { label: '"the pipeline allowed a deploy with no canary stage on a Friday"', tone: 'ok' },
+            { label: 'fix the system → the next Bob can\'t repeat it', tone: 'ok' },
+          ]}
+          caption={
+            <>
+              <strong className="text-ink">Reframe every "person" cause as a "system" cause.</strong> The person had information and
+              constraints; the <em>system</em> let a known-risky action through unchecked. Blaming Bob fixes nothing — the system
+              still permits the same mistake tomorrow.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'The structure',
+              tone: 'a',
+              body: (
+                <>
+                  <strong className="text-ink">Summary</strong> (what, severity, root cause, customer impact in concrete numbers —
+                  "12% of checkouts, ≈$4,200 GMV"), <strong className="text-ink">timeline in UTC</strong>,{' '}
+                  <strong className="text-ink">contributing factors</strong> (usually plural — outages are rarely one cause), and{' '}
+                  <strong className="text-ink">action items</strong>.
+                </>
+              ),
+            },
+            {
+              label: 'Action items: owner + date',
+              tone: 'c',
+              body: (
+                <>
+                  Every action item needs an owner and a date. "We should add alerting" is a wish; "@lin adds a
+                  connection-error-rate alert by 04-22" is a commitment. An owner-less action item is how the same incident happens
+                  twice. The only valid outputs are changes to <em>systems, runbooks, and observability</em> — "be more careful" is
+                  not an action item, it's an admission you found no real fix.
+                </>
+              ),
+            },
+            {
+              label: 'Write it within ~5 days',
+              tone: 'warn',
+              body: (
+                <>
+                  While memory is fresh and the urgency hasn't evaporated. A postmortem written a month later is fiction
+                  reconstructed from Slack scrollback — and by then nobody will fund the action items.
+                </>
+              ),
+            },
+          ]}
+        />
       </Section>
 
       <Section id="rpo" kicker="11.8" title="Backups, RPO/RTO, Chaos">
@@ -218,19 +542,69 @@ console.log('fake recorded:', fake.charges);`}
           index={7}
           title="A backup you've never restored is not a backup"
           description="RPO and RTO are business decisions priced in dollars, not infra defaults you inherit. RPO = how much data you can afford to lose. RTO = how long you can afford to be down. Every tier up the ladder costs more — the skill is picking the cheapest one your actual failure cost justifies."
-        >
-          <Bullets
-            items={[
-              <><strong className="text-ink">Nightly snapshot</strong> (RPO ~24h, RTO 1–4h, <InlineCode>$</InlineCode>): <InlineCode>pg_dump</InlineCode> → object storage, restore by hand. Lose up to a day of data, down for hours. Fine for a side project; unacceptable the moment real customers transact.</>,
-              <><strong className="text-ink">Streaming replica + PITR</strong> (RPO &lt;1min, RTO 5–30min, <InlineCode>$$</InlineCode>): a hot standby plus archived WAL lets you promote on failure and replay to any point in time. This is the production-SaaS default — and what a solo SaaS should actually pick. Managed Postgres (RDS, Neon, Cloud SQL) gives it to you as a checkbox; the cost is roughly a second instance.</>,
-              <><strong className="text-ink">Multi-region active-active</strong> (RPO ~0, RTO seconds, <InlineCode>$$$$</InlineCode>): both regions serve writes, so you inherit conflict resolution and a much harder mental model. Compliance-grade. Don't reach for it because it sounds robust — reach for it when seconds of downtime have a regulatory or contractual price tag.</>,
-              <><strong className="text-ink">An untested backup is a wish, not a backup.</strong> Restores fail for boring reasons — the dump excluded a schema, the encryption key rotated, the restore takes 6h not 1h and blows your RTO. You only learn this by restoring. Do it quarterly, on a real timer.</>,
-              <><strong className="text-ink">Chaos engineering</strong> verifies the assumptions your design rests on, <em>before</em> an incident does it for you. Kill a pod (are probes + autoscaling right?), inject latency (are timeouts and retries sane?), drop the primary DB (does the app reconnect to the replica?), block egress to a third party (does the circuit breaker trip?). Game day in non-prod first, and time how long until self-heal or human intervention — that number <em>is</em> your real RTO.</>,
-            ]}
-          />
-          <RpoRtoSelector />
-          <ChaosExperiments />
-        </TopicCard>
+        />
+        <RpoRtoSelector />
+        <Compare
+          items={[
+            {
+              label: 'Nightly snapshot — $',
+              tone: 'warn',
+              body: (
+                <>
+                  RPO ~24h, RTO 1–4h. <InlineCode>pg_dump</InlineCode> → object storage, restore by hand. Lose up to a day of data,
+                  down for hours. Fine for a side project; unacceptable the moment real customers transact.
+                </>
+              ),
+            },
+            {
+              label: 'Streaming replica + PITR — $$',
+              tone: 'c',
+              body: (
+                <>
+                  RPO &lt;1min, RTO 5–30min. A hot standby plus archived WAL lets you promote on failure and replay to any point in
+                  time. The production-SaaS default — and what a solo SaaS should actually pick. Managed Postgres (RDS, Neon, Cloud
+                  SQL) gives it to you as a checkbox; the cost is roughly a second instance.
+                </>
+              ),
+            },
+            {
+              label: 'Multi-region active-active — $$$$',
+              tone: 'fail',
+              body: (
+                <>
+                  RPO ~0, RTO seconds. Both regions serve writes, so you inherit conflict resolution and a much harder mental model.
+                  Compliance-grade. Don't reach for it because it sounds robust — reach for it when seconds of downtime have a
+                  regulatory or contractual price tag.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'you have a nightly backup' },
+            { label: 'never restored it' },
+            { label: 'dump excluded a schema / key rotated / restore takes 6h not 1h' },
+            { label: 'you learn this during the disaster, RTO blown', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">An untested backup is a wish, not a backup.</strong> Restores fail for boring
+              reasons you only discover by actually running one. Do it quarterly, on a real timer — and time it, because the restore
+              duration <em>is</em> your real RTO.
+            </>
+          }
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Chaos engineering — verify the assumptions before an incident does</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Chaos engineering verifies the assumptions your design rests on, <em>before</em> an incident does it for you. Kill a pod
+            (are probes + autoscaling right?), inject latency (are timeouts and retries sane?), drop the primary DB (does the app
+            reconnect to the replica?), block egress to a third party (does the circuit breaker trip?). Game day in non-prod first,
+            and time how long until self-heal or human intervention — that number <em>is</em> your real RTO.
+          </p>
+        </Card>
+        <ChaosExperiments />
       </Section>
 
       <Section id="quiz" kicker="Knowledge Check" title="Layer 11 Quiz">

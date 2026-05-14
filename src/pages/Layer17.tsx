@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Atom, Box, FormInput, Layers as LayersIcon, Route as RouteIcon, Sparkles, RotateCcw } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat } from '../components/UI';
+import { Section, TopicCard, InlineCode, Card, Stat, Compare, Steps } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
 import { cn } from '../lib/cn';
@@ -20,34 +20,90 @@ export default function Layer17() {
           title="Server state ≠ client state ≠ URL state ≠ form state"
           description="Most React app pain comes from mixing these. State has a lifetime — the bug is putting it somewhere whose lifetime doesn't match."
         >
-          <Bullets
-            items={[
-              <>Server state is a <em>cache</em>, not state you own. It can go stale the instant after you read it because another client (or your own other tab) can change the source of truth. Storing it in <InlineCode>useState</InlineCode> means you've signed up to manually invalidate it — and you'll get that wrong. This is what 17.2 solves.</>,
-              <>URL state survives refresh and is shareable: the current filter, the open tab, the page number. If a user pasting the link to a coworker should reproduce the screen, it belongs in search params — not <InlineCode>useState</InlineCode>. The failure mode of getting this wrong is "works on my machine, blank on reload."</>,
-              <>Lift state only when a <em>second</em> component truly needs it, and only as far as the closest common parent. Lifting to the root "just in case" is how every keystroke in a deep input re-renders the whole app. Premature lifting is the client-state version of premature optimization.</>,
-              <>Cross-tree state (theme, auth, cart) is the only case for a global store — and even then, frequency decides the tool. Low-frequency (theme flips a few times a session) → Context is fine. High-frequency (cursor position, form-wide live total) → Context re-renders <strong>every consumer on every change</strong>; use Zustand/Jotai selectors so only subscribers to the changed slice re-render.</>,
-            ]}
-          />
           <StateDecisionTree />
           <StateLibCompare />
+          <Compare
+            items={[
+              {
+                label: 'Server state',
+                tone: 'c',
+                body: (
+                  <>
+                    A <em>cache</em>, not state you own. It can go stale the instant after you read it because another client (or your
+                    own other tab) can change the source of truth. Storing it in <InlineCode>useState</InlineCode> means you've signed up
+                    to manually invalidate it — and you'll get that wrong. This is what 17.2 solves.
+                  </>
+                ),
+              },
+              {
+                label: 'URL state',
+                tone: 'a',
+                body: (
+                  <>
+                    Survives refresh and is shareable: the current filter, the open tab, the page number. If a user pasting the link to a
+                    coworker should reproduce the screen, it belongs in search params — not <InlineCode>useState</InlineCode>. The failure
+                    mode of getting this wrong is "works on my machine, blank on reload."
+                  </>
+                ),
+              },
+              {
+                label: 'Local UI state — lift carefully',
+                tone: 'warn',
+                body: (
+                  <>
+                    Lift state only when a <em>second</em> component truly needs it, and only as far as the closest common parent. Lifting
+                    to the root "just in case" is how every keystroke in a deep input re-renders the whole app. Premature lifting is the
+                    client-state version of premature optimization.
+                  </>
+                ),
+              },
+              {
+                label: 'Cross-tree state',
+                tone: 'b',
+                body: (
+                  <>
+                    Theme, auth, cart — the only case for a global store, and even then frequency decides the tool. Low-frequency (theme
+                    flips a few times a session) → Context is fine. High-frequency (cursor position, form-wide live total) → Context
+                    re-renders <strong>every consumer on every change</strong>; use Zustand/Jotai selectors so only subscribers to the
+                    changed slice re-render.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Compare
+            items={[
+              {
+                label: 'Failure mode — server data in useState',
+                tone: 'fail',
+                body: (
+                  <>
+                    You <InlineCode>fetch</InlineCode> in <InlineCode>useEffect</InlineCode>, store in <InlineCode>useState</InlineCode>,
+                    refetch on filter change. Now: two components mounting both fetch the same URL (no dedup); the user edits a row and
+                    the list still shows the old value (no invalidation); a slow response from an old filter lands after a fast one and
+                    overwrites it (race). You've reimplemented a query library, minus every feature that made it worth having.
+                  </>
+                ),
+              },
+              {
+                label: 'Failure mode — Context as a hot store',
+                tone: 'warn',
+                body: (
+                  <>
+                    Context has no selector. Every component that calls <InlineCode>useContext</InlineCode> re-renders when <em>any</em>{' '}
+                    field of the value changes — even fields it never reads. Put a fast-changing value (a timer, a live total) in Context
+                    and the whole subtree re-renders on every tick. Splitting into multiple Contexts helps; a real store with selector
+                    subscriptions is the actual fix.
+                  </>
+                ),
+              },
+            ]}
+          />
           <Card>
-            <h4 className="mb-3 font-semibold">The misplaced-state failure modes worth memorizing</h4>
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-                <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Server data in useState</div>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                  You <InlineCode>fetch</InlineCode> in <InlineCode>useEffect</InlineCode>, store in <InlineCode>useState</InlineCode>, refetch on filter change. Now: two components mounting both fetch the same URL (no dedup); the user edits a row and the list still shows the old value (no invalidation); a slow response from an old filter lands after a fast one and overwrites it (race). You've reimplemented a query library, minus every feature that made it worth having.
-                </p>
-              </div>
-              <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-                <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Context as a hot store</div>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                  Context has no selector. Every component that calls <InlineCode>useContext</InlineCode> re-renders when <em>any</em> field of the value changes — even fields it never reads. Put a fast-changing value (a timer, a live total) in Context and the whole subtree re-renders on every tick. Splitting into multiple Contexts helps; a real store with selector subscriptions is the actual fix.
-                </p>
-              </div>
-            </div>
-            <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-              The decision is always "what is this value's lifetime, and who else needs it?" Match the tool to that, and most re-render and stale-data bugs never get written.
+            <h4 className="mb-2 font-semibold">The one question that places any value</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              The decision is always "what is this value's lifetime, and who else needs it?" Match the tool to that, and most re-render
+              and stale-data bugs never get written.
             </p>
           </Card>
         </TopicCard>
@@ -60,34 +116,124 @@ export default function Layer17() {
           title="Server state with cache, dedup, retry, optimistic updates"
           description="Stop putting fetched data in useState/useEffect. Query libraries solve cache invalidation, request dedup, mutation rollback — the bug-prone parts."
         >
-          <Bullets
-            items={[
-              <>The query key <em>is</em> the cache key. <InlineCode>{`['user', userId]`}</InlineCode> — every input the request depends on goes in the array. Get this wrong and you serve user A's data to user B, or you change a filter and the cache never notices. Changing the key is also how you refetch: a new key is a new cache entry.</>,
-              <><InlineCode>staleTime</InlineCode> vs <InlineCode>gcTime</InlineCode> are different clocks. <InlineCode>staleTime</InlineCode> = how long data is considered fresh (no background refetch on mount/focus). <InlineCode>gcTime</InlineCode> = how long an <em>unused</em> entry stays in memory before garbage collection. Default <InlineCode>staleTime</InlineCode> is <strong>0</strong> — every mount refetches. That's safe, not free; tune it up for data that doesn't change every second.</>,
-              <>Dedup: two components mounting with the same key in the same tick fire <em>one</em> request and both subscribe to the result. This is why you can call <InlineCode>useQuery(['user', id])</InlineCode> in five components without thinking — the thing you could never safely do with raw <InlineCode>fetch</InlineCode>.</>,
-              <>Optimistic mutation is a four-step contract, not a vibe: <InlineCode>onMutate</InlineCode> cancels in-flight queries + snapshots the current cache + writes the optimistic value; <InlineCode>onError</InlineCode> restores the snapshot; <InlineCode>onSettled</InlineCode> invalidates the key so the server's truth wins. Skip the snapshot and a failed write leaves a fake row in the UI forever — "optimistic" without rollback is just a bug.</>,
-              <>Invalidation marks an entry stale and triggers a refetch <em>if</em> it's being observed; it does not blow away the cache. <InlineCode>setQueryData</InlineCode> writes a value directly. Use <InlineCode>invalidateQueries</InlineCode> after a mutation when you want the server's version; use <InlineCode>setQueryData</InlineCode> when you already have it (the mutation response) and want to skip a round-trip.</>,
-            ]}
-          />
           <TanStackQueryDemo />
           <Card>
-            <h4 className="mb-3 font-semibold">Why not just useState — what the library actually buys you</h4>
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-                <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">The hand-rolled version</div>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                  <InlineCode>useEffect</InlineCode> + <InlineCode>useState</InlineCode> gives you: no dedup (N components = N requests), no cache (remount = refetch from scratch), no retry, no refetch-on-focus, manual <InlineCode>loading</InlineCode>/<InlineCode>error</InlineCode> flags, and a race condition every time a slow response outlives its filter. You will write all of this, badly, in every project.
-                </p>
-              </div>
-              <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-3">
-                <div className="text-xs font-semibold uppercase tracking-widest text-emerald-300">SWR vs RTK Query vs TanStack Query</div>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                  Same shape — key, fetcher, cache, mutate. <strong>SWR</strong>: smallest, Vercel, great for simple read-heavy apps. <strong>RTK Query</strong>: pick it only if you're already on Redux Toolkit. <strong>TanStack Query</strong>: the 2026 default — richest mutation/optimistic API, framework-agnostic, best devtools. The pattern transfers; choose on ecosystem fit.
-                </p>
-              </div>
-            </div>
-            <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-              TanStack Query is a <em>cache</em>, not a client store. It is the wrong home for "is the sidebar open" — that's local UI state (17.1). One tool per state lifetime.
+            <h4 className="mb-2 font-semibold">The query key <em>is</em> the cache key</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              <InlineCode>{`['user', userId]`}</InlineCode> — every input the request depends on goes in the array. Get this wrong and you
+              serve user A's data to user B, or you change a filter and the cache never notices. Changing the key is also how you
+              refetch: a new key is a new cache entry.
+            </p>
+          </Card>
+          <Compare
+            items={[
+              {
+                label: 'staleTime — the freshness clock',
+                tone: 'a',
+                body: (
+                  <>
+                    How long data is considered fresh — no background refetch on mount/focus while fresh. Default <InlineCode>staleTime</InlineCode>{' '}
+                    is <strong>0</strong>, so every mount refetches. That's safe, not free; tune it up for data that doesn't change every
+                    second.
+                  </>
+                ),
+              },
+              {
+                label: 'gcTime — the eviction clock',
+                tone: 'b',
+                body: (
+                  <>
+                    A different clock entirely: how long an <em>unused</em> entry (no observers) stays in memory before garbage
+                    collection. It governs whether a remount hits a warm cache or starts cold — not whether a mounted query refetches.
+                  </>
+                ),
+              },
+              {
+                label: 'Dedup — one request, many subscribers',
+                tone: 'c',
+                body: (
+                  <>
+                    Two components mounting with the same key in the same tick fire <em>one</em> request and both subscribe to the
+                    result. This is why you can call <InlineCode>useQuery(['user', id])</InlineCode> in five components without thinking —
+                    the thing you could never safely do with raw <InlineCode>fetch</InlineCode>.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Steps
+            steps={[
+              { label: 'onMutate: cancel in-flight + snapshot cache + write optimistic value', tone: 'ok' },
+              { label: 'request fails' },
+              { label: 'onError: restore the snapshot', tone: 'ok' },
+              { label: 'onSettled: invalidate the key so the server wins', tone: 'ok' },
+            ]}
+            caption={
+              <>
+                Optimistic mutation is a four-step contract, not a vibe. <InlineCode>onMutate</InlineCode> cancels in-flight queries,
+                snapshots the current cache, and writes the optimistic value; <InlineCode>onError</InlineCode> restores the snapshot;{' '}
+                <InlineCode>onSettled</InlineCode> invalidates the key so the server's truth wins. Skip the snapshot and a failed write
+                leaves a fake row in the UI forever — "optimistic" without rollback is just a bug.
+              </>
+            }
+          />
+          <Compare
+            items={[
+              {
+                label: 'invalidateQueries — when you want the server',
+                tone: 'a',
+                body: (
+                  <>
+                    Marks an entry stale and triggers a refetch <em>if</em> it's being observed; it does not blow away the cache. Use it
+                    after a mutation when you want the server's authoritative version.
+                  </>
+                ),
+              },
+              {
+                label: 'setQueryData — when you already have it',
+                tone: 'c',
+                body: (
+                  <>
+                    Writes a value directly into the cache. Use it when you already hold the new data (the mutation response) and want to
+                    skip a round-trip.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Compare
+            items={[
+              {
+                label: 'The hand-rolled version',
+                tone: 'fail',
+                body: (
+                  <>
+                    <InlineCode>useEffect</InlineCode> + <InlineCode>useState</InlineCode> gives you: no dedup (N components = N
+                    requests), no cache (remount = refetch from scratch), no retry, no refetch-on-focus, manual{' '}
+                    <InlineCode>loading</InlineCode>/<InlineCode>error</InlineCode> flags, and a race condition every time a slow response
+                    outlives its filter. You will write all of this, badly, in every project.
+                  </>
+                ),
+              },
+              {
+                label: 'SWR vs RTK Query vs TanStack Query',
+                tone: 'c',
+                body: (
+                  <>
+                    Same shape — key, fetcher, cache, mutate. <strong>SWR</strong>: smallest, Vercel, great for simple read-heavy apps.{' '}
+                    <strong>RTK Query</strong>: pick it only if you're already on Redux Toolkit. <strong>TanStack Query</strong>: the
+                    2026 default — richest mutation/optimistic API, framework-agnostic, best devtools. The pattern transfers; choose on
+                    ecosystem fit.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">A cache, not a client store</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              TanStack Query is a <em>cache</em>, not a client store. It is the wrong home for "is the sidebar open" — that's local UI
+              state (17.1). One tool per state lifetime.
             </p>
           </Card>
         </TopicCard>
@@ -127,16 +273,75 @@ console.log('Read above. Pattern is universal — same shape in SWR, RTK Query.'
           title="Schema-first, controlled-when-needed"
           description="RHF is uncontrolled by default — fewer re-renders. Zod gives you one schema for client validation AND server parsing AND TypeScript types. One source of truth."
         >
-          <Bullets
+          <FormPlayground />
+          <Compare
             items={[
-              <>RHF is uncontrolled by default: <InlineCode>register</InlineCode> wires a field via ref, so a keystroke updates the DOM and RHF's internal store <em>without</em> re-rendering your component. A controlled 30-field form does the opposite — every keystroke calls <InlineCode>setState</InlineCode>, re-renders the parent, and re-renders all 30 fields. That's the difference between a form that types instantly and one that lags.</>,
-              <>The cost of uncontrolled: you can't trivially react to a value mid-typing. When you genuinely need to (live derived total, autocomplete, masked input), <InlineCode>useWatch</InlineCode> subscribes <em>one</em> component to <em>one</em> field — re-render just that, not the form. Reach for a fully controlled field only when you must transform every keystroke.</>,
-              <>One Zod schema is the single source of truth: <InlineCode>zodResolver</InlineCode> runs it for client validation, the same schema <InlineCode>.parse()</InlineCode>s the request body on the server, and <InlineCode>z.infer</InlineCode> generates the TS type. The failure mode it kills: two validation paths — a client one and a server one — silently drifting apart until the client says valid and the server says 400.</>,
-              <>Validation timing is a UX dial: <InlineCode>mode: 'onSubmit'</InlineCode> (default) is calm but late; <InlineCode>onBlur</InlineCode> validates when a field loses focus; <InlineCode>onChange</InlineCode> is live but noisy. Common pick: validate <InlineCode>onBlur</InlineCode>, then re-validate <InlineCode>onChange</InlineCode> once a field has errored, so the error clears as the user fixes it.</>,
-              <>Server is the real boundary. Client validation is UX — it can be bypassed, disabled, or stale. The Zod schema must run on the server too; that's the whole point of schema-first. Client-only validation is a hint, not a guarantee.</>,
+              {
+                label: 'Uncontrolled (RHF default) — register via ref',
+                tone: 'c',
+                body: (
+                  <>
+                    <InlineCode>register</InlineCode> wires a field via ref, so a keystroke updates the DOM and RHF's internal store{' '}
+                    <em>without</em> re-rendering your component. A controlled 30-field form does the opposite — every keystroke calls{' '}
+                    <InlineCode>setState</InlineCode>, re-renders the parent, and re-renders all 30 fields. That's the difference between a
+                    form that types instantly and one that lags.
+                  </>
+                ),
+              },
+              {
+                label: 'Controlled-when-needed — useWatch',
+                tone: 'a',
+                body: (
+                  <>
+                    The cost of uncontrolled: you can't trivially react to a value mid-typing. When you genuinely need to (live derived
+                    total, autocomplete, masked input), <InlineCode>useWatch</InlineCode> subscribes <em>one</em> component to <em>one</em>{' '}
+                    field — re-render just that, not the form. Reach for a fully controlled field only when you must transform every
+                    keystroke.
+                  </>
+                ),
+              },
             ]}
           />
-          <FormPlayground />
+          <Card>
+            <h4 className="mb-2 font-semibold">One Zod schema, three jobs</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              One Zod schema is the single source of truth: <InlineCode>zodResolver</InlineCode> runs it for client validation, the same
+              schema <InlineCode>.parse()</InlineCode>s the request body on the server, and <InlineCode>z.infer</InlineCode> generates the
+              TS type. The failure mode it kills: two validation paths — a client one and a server one — silently drifting apart until
+              the client says valid and the server says 400.
+            </p>
+          </Card>
+          <Compare
+            items={[
+              {
+                label: "mode: 'onSubmit' (default)",
+                tone: 'a',
+                body: <>Calm but late — the user only learns a field is wrong after pressing submit.</>,
+              },
+              {
+                label: "mode: 'onBlur'",
+                tone: 'b',
+                body: <>Validates when a field loses focus — feedback per field without punishing mid-typing.</>,
+              },
+              {
+                label: "mode: 'onChange'",
+                tone: 'warn',
+                body: (
+                  <>
+                    Live but noisy. Common pick: validate <InlineCode>onBlur</InlineCode>, then re-validate <InlineCode>onChange</InlineCode>{' '}
+                    once a field has errored, so the error clears as the user fixes it.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">The server is the real boundary</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Client validation is UX — it can be bypassed, disabled, or stale. The Zod schema must run on the server too; that's the
+              whole point of schema-first. Client-only validation is a hint, not a guarantee.
+            </p>
+          </Card>
         </TopicCard>
       </Section>
 
@@ -147,16 +352,85 @@ console.log('Read above. Pattern is universal — same shape in SWR, RTK Query.'
           title="React Router · TanStack Router · Next.js App Router"
           description="If you're inside Next.js, use the App Router. Standalone SPA: TanStack Router for type-safety, React Router for ecosystem."
         >
-          <Bullets
+          <RoutingMatrix />
+          <Card>
+            <h4 className="mb-2 font-semibold">The real decision: "do I have a server?"</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Next.js App Router is server-first — routes are Server Components, data is fetched on the server, and the client gets
+              HTML. A standalone SPA (Vite + TanStack/React Router) ships an empty shell and fetches everything client-side. That's a
+              deployment and SEO choice, not a routing-API preference. (Rendering-strategy mechanics — RSC, hydration, streaming — are
+              L10's job.)
+            </p>
+          </Card>
+          <Steps
+            steps={[
+              { label: 'route renders' },
+              { label: 'effect fires → fetches' },
+              { label: 'child renders' },
+              { label: 'its effect fetches' },
+              { label: 'requests chained by render order', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                Routers solve the data-loading waterfall. Without a router <InlineCode>loader</InlineCode>, fetches are chained by render
+                order — each one waits for its parent to mount first. A <InlineCode>loader</InlineCode> starts the fetch <em>as navigation
+                begins</em>, in parallel, before the component mounts. TanStack Router's <InlineCode>loader</InlineCode> integrates with
+                TanStack Query so the loader primes the same cache the component reads.
+              </>
+            }
+          />
+          <Compare
             items={[
-              <>The real decision is "do I have a server?" Next.js App Router is server-first — routes are Server Components, data is fetched on the server, and the client gets HTML. A standalone SPA (Vite + TanStack/React Router) ships an empty shell and fetches everything client-side. That's a deployment and SEO choice, not a routing-API preference. (Rendering-strategy mechanics — RSC, hydration, streaming — are L10's job.)</>,
-              <>Routers solve the data-loading waterfall. Without a router <InlineCode>loader</InlineCode>, a route renders → effect fires → fetches → child renders → its effect fetches — requests chained by render order. A <InlineCode>loader</InlineCode> starts the fetch <em>as navigation begins</em>, in parallel, before the component mounts. TanStack Router's <InlineCode>loader</InlineCode> integrates with TanStack Query so the loader primes the same cache the component reads.</>,
-              <>Type-safety is where TanStack Router earns its place: params, search params, and loader data are <em>inferred</em> end-to-end. <InlineCode>{`navigate({ to: '/user/$id', params: { id } })`}</InlineCode> is a compile error if the route or param name is wrong. React Router's params are <InlineCode>string | undefined</InlineCode> — you cast and hope. For a large app, that inference catches a whole class of broken-link bugs.</>,
-              <>Search params are URL state (17.1), not an afterthought. TanStack Router treats them as typed, validated, first-class state with its own schema — the right home for filters and pagination. Hand-managing <InlineCode>?sort=...</InlineCode> with <InlineCode>useSearchParams</InlineCode> string-twiddling is where that state silently rots.</>,
-              <><strong>When each:</strong> in Next.js → App Router, no debate. Standalone SPA, greenfield, TS-heavy → TanStack Router for the inference. Existing app or you need the huge ecosystem of guides/integrations → React Router. Tiny widget or embed → wouter (~2 KB, hooks only, no data loading).</>,
+              {
+                label: 'TanStack Router — inferred end-to-end',
+                tone: 'c',
+                body: (
+                  <>
+                    Params, search params, and loader data are <em>inferred</em> end-to-end.{' '}
+                    <InlineCode>{`navigate({ to: '/user/$id', params: { id } })`}</InlineCode> is a compile error if the route or param
+                    name is wrong. For a large app, that inference catches a whole class of broken-link bugs. It also treats search
+                    params as URL state (17.1) — typed, validated, first-class state with its own schema, the right home for filters and
+                    pagination.
+                  </>
+                ),
+              },
+              {
+                label: 'React Router — string | undefined',
+                tone: 'warn',
+                body: (
+                  <>
+                    Params come back as <InlineCode>string | undefined</InlineCode> — you cast and hope. Hand-managing{' '}
+                    <InlineCode>?sort=...</InlineCode> with <InlineCode>useSearchParams</InlineCode> string-twiddling is where that URL
+                    state silently rots. The trade is the vast ecosystem of guides and integrations.
+                  </>
+                ),
+              },
             ]}
           />
-          <RoutingMatrix />
+          <Compare
+            items={[
+              {
+                label: 'Inside Next.js',
+                tone: 'a',
+                body: <>App Router, no debate — it's the routing layer of the framework you already chose.</>,
+              },
+              {
+                label: 'Standalone SPA, greenfield, TS-heavy',
+                tone: 'c',
+                body: <>TanStack Router for the end-to-end inference — broken links become compile errors.</>,
+              },
+              {
+                label: 'Existing app / huge ecosystem need',
+                tone: 'b',
+                body: <>React Router — the largest body of guides and integrations, and what most existing apps already run.</>,
+              },
+              {
+                label: 'Tiny widget or embed',
+                tone: 'warn',
+                body: <>wouter (~2 KB, hooks only, no data loading) — anything heavier is dead weight in an embed.</>,
+              },
+            ]}
+          />
         </TopicCard>
       </Section>
 
@@ -167,17 +441,82 @@ console.log('Read above. Pattern is universal — same shape in SWR, RTK Query.'
           title="Compound components, render props, controlled vs uncontrolled"
           description="The patterns that make components reusable without coupling them to a single layout or style."
         >
-          <Bullets
+          <CompoundDemo />
+          <Compare
             items={[
-              <>Compound components share state via context so the consumer owns layout. A fat <InlineCode>{`<Tabs tabs={[...]} />`}</InlineCode> config prop works until someone needs a divider between two tabs, or an icon, or a panel that isn't a sibling — then you're adding props forever to re-expose markup the consumer already knows how to write. <InlineCode>{`<Tabs.Tab>`}</InlineCode> reading active state from context costs you one provider and buys unlimited composition.</>,
-              <>The compound trade-off: the context is private, so a stray <InlineCode>{`<Tabs.Panel>`}</InlineCode> rendered outside <InlineCode>{`<Tabs>`}</InlineCode> throws (or silently does nothing). That's usually the right call — fail loud — but it's a real constraint, and it's why these are exported as a namespace (<InlineCode>Tabs.Panel</InlineCode>), signalling "these belong together."</>,
-              <>Render props share <em>behavior while the consumer controls where output renders</em>. Custom hooks (17.6) superseded them for sharing logic — a hook has no wrapper component, no extra tree depth. Reach for a render prop only when the consumer must control <em>placement</em>: a <InlineCode>{`<Virtualizer>`}</InlineCode> that computes which rows are visible but lets you render each row however you like.</>,
-              <>Controlled vs uncontrolled is a question of who owns the value. Controlled = parent holds it in state, re-renders on every change, trivial to validate/transform/reset. Uncontrolled = the DOM holds it, you read via ref or on submit, far fewer re-renders. Same axis as the form rule in 17.3 — a 30-field controlled form re-renders the parent on every keystroke.</>,
-              <>The best reusable components support <em>both</em>: a <InlineCode>value</InlineCode> prop makes them controlled, a <InlineCode>defaultValue</InlineCode> prop makes them uncontrolled, and the component picks the mode by checking which it got. That's exactly how <InlineCode>{`<input>`}</InlineCode> works — and why every serious component library copies the pattern.</>,
+              {
+                label: 'Compound components — context over config prop',
+                tone: 'c',
+                body: (
+                  <>
+                    Compound components share state via context so the consumer owns layout. A fat{' '}
+                    <InlineCode>{`<Tabs tabs={[...]} />`}</InlineCode> config prop works until someone needs a divider between two tabs,
+                    or an icon, or a panel that isn't a sibling — then you're adding props forever to re-expose markup the consumer
+                    already knows how to write. <InlineCode>{`<Tabs.Tab>`}</InlineCode> reading active state from context costs you one
+                    provider and buys unlimited composition.
+                  </>
+                ),
+              },
+              {
+                label: 'The compound trade-off — private context',
+                tone: 'warn',
+                body: (
+                  <>
+                    The context is private, so a stray <InlineCode>{`<Tabs.Panel>`}</InlineCode> rendered outside{' '}
+                    <InlineCode>{`<Tabs>`}</InlineCode> throws (or silently does nothing). That's usually the right call — fail loud — but
+                    it's a real constraint, and it's why these are exported as a namespace (<InlineCode>Tabs.Panel</InlineCode>),
+                    signalling "these belong together."
+                  </>
+                ),
+              },
             ]}
           />
-          <CompoundDemo />
+          <Card>
+            <h4 className="mb-2 font-semibold">Render props — when the consumer must control placement</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Render props share <em>behavior while the consumer controls where output renders</em>. Custom hooks (17.6) superseded
+              them for sharing logic — a hook has no wrapper component, no extra tree depth. Reach for a render prop only when the
+              consumer must control <em>placement</em>: a <InlineCode>{`<Virtualizer>`}</InlineCode> that computes which rows are visible
+              but lets you render each row however you like.
+            </p>
+          </Card>
           <ControlledVsUncontrolled />
+          <Compare
+            items={[
+              {
+                label: 'Controlled — parent owns the value',
+                tone: 'a',
+                body: (
+                  <>
+                    Parent holds it in state, re-renders on every change, trivial to validate/transform/reset. Same axis as the form
+                    rule in 17.3 — a 30-field controlled form re-renders the parent on every keystroke.
+                  </>
+                ),
+              },
+              {
+                label: 'Uncontrolled — the DOM owns the value',
+                tone: 'b',
+                body: (
+                  <>
+                    The DOM holds it; you read via ref or on submit. Far fewer re-renders — which is exactly why RHF defaults to it for
+                    big forms.
+                  </>
+                ),
+              },
+              {
+                label: 'Support both — the input pattern',
+                tone: 'c',
+                body: (
+                  <>
+                    The best reusable components support both: a <InlineCode>value</InlineCode> prop makes them controlled, a{' '}
+                    <InlineCode>defaultValue</InlineCode> prop makes them uncontrolled, and the component picks the mode by checking
+                    which it got. That's exactly how <InlineCode>{`<input>`}</InlineCode> works — and why every serious component library
+                    copies the pattern.
+                  </>
+                ),
+              },
+            ]}
+          />
         </TopicCard>
       </Section>
 
@@ -188,15 +527,66 @@ console.log('Read above. Pattern is universal — same shape in SWR, RTK Query.'
           title="Extract behavior, not just code"
           description="A custom hook is a contract: 'give me these inputs, I'll return this state and these handlers'. The win is reusable behavior with full type safety, not 'less code'."
         >
-          <Bullets
+          <Card>
+            <h4 className="mb-2 font-semibold">The <InlineCode>use*</InlineCode> name is load-bearing</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              It isn't a style rule — it's how the linter knows to enforce the rules of hooks (no conditional calls, no calls in loops).
+              Call <InlineCode>useQuery</InlineCode> from a function named <InlineCode>getUser</InlineCode> and the linter goes blind; the
+              hook order can break and React's state slots desync.
+            </p>
+          </Card>
+          <Compare
             items={[
-              <>The <InlineCode>use*</InlineCode> name isn't a style rule — it's how the linter knows to enforce the rules of hooks (no conditional calls, no calls in loops). Call <InlineCode>useQuery</InlineCode> from a function named <InlineCode>getUser</InlineCode> and the linter goes blind; the hook order can break and React's state slots desync. The name is load-bearing.</>,
-              <>A custom hook does <strong>not</strong> share state between call sites — it shares <em>behavior</em>. Two components calling <InlineCode>useToggle()</InlineCode> get two independent booleans, same as two <InlineCode>useState</InlineCode> calls. If you want shared state, that's a store or lifted state (17.1), not a hook. Misunderstanding this is the most common custom-hook bug.</>,
-              <>Hooks compose downward: <InlineCode>useUser()</InlineCode> calls <InlineCode>useQuery</InlineCode> internally, <InlineCode>useUser()</InlineCode> gets called by <InlineCode>useCurrentOrg()</InlineCode>. Each layer is a behavior contract — "give me these inputs, get this state and these handlers." Build small (<InlineCode>useDebounce</InlineCode>, <InlineCode>useToggle</InlineCode>, ~10 lines) and stack them; that's the actual win, not "fewer lines."</>,
-              <>Watch the returned-array identity: a hook returning <InlineCode>{`{ data, refetch }`}</InlineCode> hands back a new object every render. If a consumer puts <InlineCode>refetch</InlineCode> in a <InlineCode>useEffect</InlineCode> dependency array, wrap it in <InlineCode>useCallback</InlineCode> inside the hook — or the effect fires every render. A hook's return value is part of its contract; unstable identities break callers silently.</>,
-              <>Keep hooks platform-agnostic where you can — only touch the DOM (via refs) when the behavior genuinely needs it. A hook that's pure logic is testable without a renderer and reusable in React Native. If a hook returns more than ~4 things, return an object and destructure at the call site.</>,
+              {
+                label: 'A hook shares behavior, NOT state',
+                tone: 'fail',
+                body: (
+                  <>
+                    A custom hook does <strong>not</strong> share state between call sites — it shares <em>behavior</em>. Two components
+                    calling <InlineCode>useToggle()</InlineCode> get two independent booleans, same as two <InlineCode>useState</InlineCode>{' '}
+                    calls. If you want shared state, that's a store or lifted state (17.1), not a hook. Misunderstanding this is the most
+                    common custom-hook bug.
+                  </>
+                ),
+              },
+              {
+                label: 'Hooks compose downward',
+                tone: 'c',
+                body: (
+                  <>
+                    <InlineCode>useUser()</InlineCode> calls <InlineCode>useQuery</InlineCode> internally; <InlineCode>useUser()</InlineCode>{' '}
+                    gets called by <InlineCode>useCurrentOrg()</InlineCode>. Each layer is a behavior contract — "give me these inputs,
+                    get this state and these handlers." Build small (<InlineCode>useDebounce</InlineCode>, <InlineCode>useToggle</InlineCode>,
+                    ~10 lines) and stack them; that's the actual win, not "fewer lines."
+                  </>
+                ),
+              },
             ]}
           />
+          <Steps
+            steps={[
+              { label: 'hook returns { data, refetch } — new object every render' },
+              { label: 'consumer puts refetch in a useEffect dep array' },
+              { label: 'identity changes every render' },
+              { label: 'effect fires every render', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                Watch the returned-value identity. A hook returning <InlineCode>{`{ data, refetch }`}</InlineCode> hands back a new object
+                every render; if a consumer puts <InlineCode>refetch</InlineCode> in a <InlineCode>useEffect</InlineCode> dependency
+                array, wrap it in <InlineCode>useCallback</InlineCode> inside the hook — or the effect fires every render. A hook's
+                return value is part of its contract; unstable identities break callers silently.
+              </>
+            }
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">Keep hooks platform-agnostic</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Only touch the DOM (via refs) when the behavior genuinely needs it. A hook that's pure logic is testable without a
+              renderer and reusable in React Native. If a hook returns more than ~4 things, return an object and destructure at the
+              call site.
+            </p>
+          </Card>
         </TopicCard>
         <CodePlayground
           mode="js"
@@ -246,35 +636,104 @@ console.log('Three hooks every app reuses. Keep them ~10 lines each.');`}
           title="Framer Motion · React Spring · auto-animate · CSS"
           description="Don't reach for a library before trying CSS transitions and the View Transitions API. When you need orchestration or physics-based motion, Motion is the default."
         >
-          <Bullets
-            items={[
-              <>Animate <InlineCode>transform</InlineCode> and <InlineCode>opacity</InlineCode>, almost nothing else. Those two are composited on the GPU and skip layout + paint. Animating <InlineCode>width</InlineCode>, <InlineCode>top</InlineCode>, or <InlineCode>margin</InlineCode> forces a layout recalculation every frame — the jank you feel. This is true for CSS <em>and</em> every JS library; the library can't save you from a layout-thrashing property.</>,
-              <>Start with CSS. A hover, an open/close, a fade is a <InlineCode>transition</InlineCode> — 0 KB, runs off the main thread, can't jank from a slow render. Reach for a library when CSS genuinely can't express it: orchestration (stagger a list), interruptible/physics motion, gesture-driven drag, or animating a component as it <em>unmounts</em>.</>,
-              <>Exit animations are the real reason people install Framer Motion. React removes a node from the DOM the instant it leaves the tree — CSS gets no chance to animate it out. <InlineCode>{`<AnimatePresence>`}</InlineCode> holds the node mounted until its exit animation finishes, then removes it. There is no clean CSS-only equivalent.</>,
-              <>Layout animation: <InlineCode>{`<motion.div layout>`}</InlineCode> does FLIP automatically — it measures the element's box before and after a change, then animates the delta with a transform. Reordering a list, expanding a card, moving between grid cells "just works" because the expensive part (measuring, computing the inverse transform) is the library's job.</>,
-              <>The View Transitions API is the native version of this — animate between two DOM states (even across routes) for ~0 KB. Browser support is still partial in 2026, so feature-detect and let it degrade to an instant swap. Where it works, it's the cheapest cross-page transition you can ship.</>,
-            ]}
-          />
           <AnimationCompare />
           <AnimationDemo />
+          <Steps
+            steps={[
+              { label: 'animate transform / opacity → GPU composite, skips layout + paint', tone: 'ok' },
+              { label: 'animate width / top / margin' },
+              { label: 'layout recalculates every frame' },
+              { label: 'the jank you feel', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                Animate <InlineCode>transform</InlineCode> and <InlineCode>opacity</InlineCode>, almost nothing else — those two are
+                composited on the GPU and skip layout + paint. Animating <InlineCode>width</InlineCode>, <InlineCode>top</InlineCode>, or{' '}
+                <InlineCode>margin</InlineCode> forces a layout recalculation every frame. This is true for CSS <em>and</em> every JS
+                library; the library can't save you from a layout-thrashing property.
+              </>
+            }
+          />
+          <Compare
+            items={[
+              {
+                label: 'Start with CSS',
+                tone: 'c',
+                body: (
+                  <>
+                    A hover, an open/close, a fade is a <InlineCode>transition</InlineCode> — 0 KB, runs off the main thread, can't jank
+                    from a slow render. Reach for a library only when CSS genuinely can't express it: orchestration (stagger a list),
+                    interruptible/physics motion, gesture-driven drag, or animating a component as it <em>unmounts</em>.
+                  </>
+                ),
+              },
+              {
+                label: 'Exit animations — why people install Framer Motion',
+                tone: 'a',
+                body: (
+                  <>
+                    React removes a node from the DOM the instant it leaves the tree — CSS gets no chance to animate it out.{' '}
+                    <InlineCode>{`<AnimatePresence>`}</InlineCode> holds the node mounted until its exit animation finishes, then removes
+                    it. There is no clean CSS-only equivalent.
+                  </>
+                ),
+              },
+              {
+                label: 'Layout animation — FLIP for free',
+                tone: 'b',
+                body: (
+                  <>
+                    <InlineCode>{`<motion.div layout>`}</InlineCode> does FLIP automatically — it measures the element's box before and
+                    after a change, then animates the delta with a transform. Reordering a list, expanding a card, moving between grid
+                    cells "just works" because the expensive part (measuring, computing the inverse transform) is the library's job.
+                  </>
+                ),
+              },
+              {
+                label: 'View Transitions API — the native version',
+                tone: 'warn',
+                body: (
+                  <>
+                    Animate between two DOM states (even across routes) for ~0 KB. Browser support is still partial in 2026, so
+                    feature-detect and let it degrade to an instant swap. Where it works, it's the cheapest cross-page transition you
+                    can ship.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Compare
+            items={[
+              {
+                label: 'Reach for CSS / auto-animate',
+                tone: 'c',
+                body: (
+                  <>
+                    Hover, focus, open/close, simple fades → CSS <InlineCode>transition</InlineCode>, 0 KB. List add/remove/reorder with
+                    no fuss → <InlineCode>@formkit/auto-animate</InlineCode> (~3 KB, one line on the parent). Most "we need animations"
+                    tickets end here — and shipping a 30 KB dependency for a fade is a bundle-budget mistake (that budget conversation
+                    is L4's).
+                  </>
+                ),
+              },
+              {
+                label: 'Reach for Framer Motion / react-spring',
+                tone: 'a',
+                body: (
+                  <>
+                    Exit animations, shared-layout transitions, orchestrated sequences, gesture-driven drag → <strong>Framer Motion</strong>{' '}
+                    (~30 KB), the default when you need real choreography. <strong>react-spring</strong> (~12 KB) when you specifically
+                    want physics-based, interruptible motion (rubber-band drag) and can absorb its steeper API.
+                  </>
+                ),
+              },
+            ]}
+          />
           <Card>
-            <h4 className="mb-3 font-semibold">Picking an animation tool — the honest decision</h4>
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-3">
-                <div className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Reach for CSS / auto-animate</div>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                  Hover, focus, open/close, simple fades → CSS <InlineCode>transition</InlineCode>, 0 KB. List add/remove/reorder with no fuss → <InlineCode>@formkit/auto-animate</InlineCode> (~3 KB, one line on the parent). Most "we need animations" tickets end here — and shipping a 30 KB dependency for a fade is a bundle-budget mistake (that budget conversation is L4's).
-                </p>
-              </div>
-              <div className="rounded-xl border border-cyan-400/30 bg-cyan-400/5 p-3">
-                <div className="text-xs font-semibold uppercase tracking-widest text-cyan-300">Reach for Framer Motion / react-spring</div>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                  Exit animations, shared-layout transitions, orchestrated sequences, gesture-driven drag → <strong>Framer Motion</strong> (~30 KB), the default when you need real choreography. <strong>react-spring</strong> (~12 KB) when you specifically want physics-based, interruptible motion (rubber-band drag) and can absorb its steeper API.
-                </p>
-              </div>
-            </div>
-            <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-              Default order: CSS → auto-animate → View Transitions → Framer Motion. Each step up costs bundle size; only pay it for capability the cheaper tier genuinely lacks.
+            <h4 className="mb-2 font-semibold">Default order: cheapest tier that has the capability</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              CSS → auto-animate → View Transitions → Framer Motion. Each step up costs bundle size; only pay it for capability the
+              cheaper tier genuinely lacks.
             </p>
           </Card>
         </TopicCard>
@@ -287,16 +746,77 @@ console.log('Three hooks every app reuses. Keep them ~10 lines each.');`}
           title="shadcn/ui · Radix · Headless UI · Mantine · Chakra"
           description="Headless (Radix, Headless UI, RAC): you own the styles, they own behavior + a11y. Themed (Mantine, Chakra): you adopt their look. shadcn/ui = Radix + your own styles, copied into your repo."
         >
-          <Bullets
+          <ComponentLibMatrix />
+          <Card>
+            <h4 className="mb-2 font-semibold">What you're really outsourcing is accessibility, not looks</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              A "simple" dropdown is roving focus, <InlineCode>aria-activedescendant</InlineCode>, Escape-to-close, type-ahead,
+              focus-return-on-close, and screen-reader announcements. Headless libraries (Radix, React Aria) ship exactly that behavior
+              and zero styles — you write every class, they handle the part that's genuinely hard to get right.
+            </p>
+          </Card>
+          <Compare
             items={[
-              <>The thing you're really outsourcing is accessibility, not looks. A "simple" dropdown is roving focus, <InlineCode>aria-activedescendant</InlineCode>, Escape-to-close, type-ahead, focus-return-on-close, and screen-reader announcements. Headless libraries (Radix, React Aria) ship exactly that behavior and zero styles — you write every class, they handle the part that's genuinely hard to get right.</>,
-              <>Styled libraries (MUI, Mantine, Chakra) ship behavior <em>and</em> a look. Fast to a finished UI — but the moment your design diverges from theirs, you're overriding their styles, fighting specificity, and shipping their CSS runtime plus your overrides. The trap: picking a styled library for speed, then spending months making it not look like that library.</>,
-              <>shadcn/ui is the third model: it's not a dependency. A CLI copies Radix-based, Tailwind-styled component <em>source</em> into your repo. You own the files — customise freely, no version lock, no upstream breaking changes. The cost: no <InlineCode>npm update</InlineCode> for components; you pull improvements manually. For a solo dev who wants control, that trade is usually right.</>,
-              <>React Aria (Adobe) is the pick when accessibility is the hard requirement — it's the most rigorous behavior layer, tested across assistive tech. Radix is the pragmatic default for most apps. Headless UI is fine if you're all-in on Tailwind and only need the few components it covers.</>,
-              <>The decision compounds across the codebase, so decide once: do you have a real design (or will you) → headless (shadcn/ui as the default starting point). Internal tool, no design budget, ship today → a styled library, and accept its look. The expensive mistake is mixing two styled libraries — two themes, two runtimes, two sets of overrides.</>,
+              {
+                label: 'Headless — Radix, Headless UI, React Aria',
+                tone: 'c',
+                body: (
+                  <>
+                    Behavior + a11y, no styles — you ship the design. <strong>React Aria</strong> (Adobe) is the pick when accessibility
+                    is the hard requirement: the most rigorous behavior layer, tested across assistive tech. <strong>Radix</strong> is
+                    the pragmatic default for most apps. <strong>Headless UI</strong> is fine if you're all-in on Tailwind and only need
+                    the few components it covers.
+                  </>
+                ),
+              },
+              {
+                label: 'Styled — MUI, Mantine, Chakra',
+                tone: 'warn',
+                body: (
+                  <>
+                    Behavior <em>and</em> a look — fast to a finished UI. But the moment your design diverges from theirs, you're
+                    overriding their styles, fighting specificity, and shipping their CSS runtime plus your overrides. The trap: picking
+                    a styled library for speed, then spending months making it not look like that library.
+                  </>
+                ),
+              },
+              {
+                label: 'shadcn/ui — the third model, not a dependency',
+                tone: 'a',
+                body: (
+                  <>
+                    A CLI copies Radix-based, Tailwind-styled component <em>source</em> into your repo. You own the files — customise
+                    freely, no version lock, no upstream breaking changes. The cost: no <InlineCode>npm update</InlineCode> for
+                    components; you pull improvements manually. For a solo dev who wants control, that trade is usually right.
+                  </>
+                ),
+              },
             ]}
           />
-          <ComponentLibMatrix />
+          <Compare
+            items={[
+              {
+                label: 'You have a real design (or will)',
+                tone: 'c',
+                body: <>Headless — shadcn/ui as the default starting point. You own the look; the library owns the hard a11y.</>,
+              },
+              {
+                label: 'Internal tool, no design budget, ship today',
+                tone: 'a',
+                body: <>A styled library, and accept its look — the speed is worth more than the divergence you won't need.</>,
+              },
+              {
+                label: 'The expensive mistake',
+                tone: 'fail',
+                body: (
+                  <>
+                    Mixing two styled libraries — two themes, two runtimes, two sets of overrides. The decision compounds across the
+                    codebase, so decide once.
+                  </>
+                ),
+              },
+            ]}
+          />
         </TopicCard>
       </Section>
 

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart3, Activity, Sparkles, FileText, Scale, DollarSign, GitBranch, Beaker } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat } from '../components/UI';
+import { Section, TopicCard, InlineCode, Card, Stat, Steps, Compare } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
 import { cn } from '../lib/cn';
@@ -20,35 +20,94 @@ export default function Layer13() {
           title="Follow one request through ten services"
           description="A trace is a tree of spans, propagated via the W3C traceparent header. Tail-sampling keeps cost down by storing only interesting traces (errors, long-tail latency)."
         >
-          <Bullets
-            items={[
-              <>A <strong>span</strong> is one timed operation (an HTTP handler, a DB query); a <strong>trace</strong> is the tree of spans for one request, linked by a shared <InlineCode>trace_id</InlineCode> and parent pointers. The link survives a network hop because each service forwards the W3C <InlineCode>traceparent</InlineCode> header (<InlineCode>00-{'{'}trace_id{'}'}-{'{'}span_id{'}'}-01</InlineCode>) and the next service makes its span a child of that <InlineCode>span_id</InlineCode>. Drop the header — a missing instrumentation library, a queue hop nobody propagated through — and the trace silently splits into two unrelated stumps.</>,
-              <>Tracing tells you <em>where</em>; logs and metrics tell you <em>why</em>. The discipline: start at the slow or errored span, walk <em>down</em> to its children, and only then open logs for that service in that time window. The anti-pattern is reacting to the symptom span — "the gateway is slow" — and tuning it, when the gateway is slow only because <InlineCode>stripe.api</InlineCode> three levels down is.</>,
-              <><strong>Head sampling vs tail sampling.</strong> Head sampling decides at the root span, before the request finishes — keep 1%, cheap, but you discard the trace <em>before</em> you know it errored. Tail sampling buffers the whole trace and decides after completion, so you can keep 100% of errors and P99-latency traces and 1% of the boring rest. Tail sampling costs a buffering collector and memory; head sampling costs you the exact trace you needed at 3am.</>,
-              <>Correlate everything on <InlineCode>trace_id</InlineCode>: stamp it into every log line and error report. Then "find the logs for this slow trace" is one filter, not a timestamp-guessing exercise across five log streams.</>,
-            ]}
-          />
           <SpanTreeDemo />
         </TopicCard>
-        <RedUseExplainer />
+        <Steps
+          steps={[
+            { label: 'service A starts span', tone: 'ok' },
+            { label: 'forwards traceparent header' },
+            { label: 'service B makes a child span', tone: 'ok' },
+            { label: 'queue hop drops the header' },
+            { label: 'trace splits into two stumps', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              A <strong>span</strong> is one timed operation (an HTTP handler, a DB query); a <strong>trace</strong> is the tree of
+              spans for one request, linked by a shared <InlineCode>trace_id</InlineCode> and parent pointers. The link survives a
+              network hop because each service forwards the W3C <InlineCode>traceparent</InlineCode> header (
+              <InlineCode>00-{'{'}trace_id{'}'}-{'{'}span_id{'}'}-01</InlineCode>) and the next service makes its span a child of that{' '}
+              <InlineCode>span_id</InlineCode>. Drop the header — a missing instrumentation library, a queue hop nobody propagated
+              through — and the trace silently splits into two unrelated stumps.
+            </>
+          }
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">RED vs USE — when each, and why you need both</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-cyan-400/30 bg-cyan-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-cyan-300">RED — the symptom</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Rate / Errors / Duration, per endpoint — what the <em>user</em> feels. This is what you alert and page on. But Duration is a distribution, not a number: alert on P95/P99, never the average. The average of 99 fast requests and 1 ten-second request still looks fine while 1% of users are furious.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">USE — the cause</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Utilization / Saturation / Errors, per resource — CPU, disk, DB connection pool. RED tells you latency doubled; only USE explains it: the connection pool is saturated, requests are queuing for a connection. RED without USE leaves you staring at a slow endpoint with no idea which resource hit a wall.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            The pairing is the point: RED is the alert, USE is the diagnosis. A saturation cliff — pool exhausted, disk IOPS capped — shows as a latency spike in RED and a flat-topped graph in USE. You need the second graph to know what to fix.
+          <h4 className="mb-2 font-semibold">Tracing tells you where; logs and metrics tell you why</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            The discipline: start at the slow or errored span, walk <em>down</em> to its children, and only then open logs for that
+            service in that time window. The anti-pattern is reacting to the symptom span — "the gateway is slow" — and tuning it,
+            when the gateway is slow only because <InlineCode>stripe.api</InlineCode> three levels down is. Correlate everything on{' '}
+            <InlineCode>trace_id</InlineCode>: stamp it into every log line and error report, so "find the logs for this slow trace"
+            is one filter, not a timestamp-guessing exercise across five log streams.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'Head sampling',
+              tone: 'warn',
+              body: (
+                <>
+                  Decides at the root span, <em>before</em> the request finishes — keep 1%, cheap, no buffering. But you discard the
+                  trace before you know it errored. Head sampling costs you the exact trace you needed at 3am.
+                </>
+              ),
+            },
+            {
+              label: 'Tail sampling',
+              tone: 'c',
+              body: (
+                <>
+                  Buffers the whole trace and decides <em>after</em> completion, so you can keep 100% of errors and P99-latency traces
+                  and 1% of the boring rest. The cost is a buffering collector and memory — the price of never losing the
+                  interesting trace.
+                </>
+              ),
+            },
+          ]}
+        />
+        <RedUseExplainer />
+        <Compare
+          items={[
+            {
+              label: 'RED — the symptom',
+              tone: 'a',
+              body: (
+                <>
+                  Rate / Errors / Duration, per endpoint — what the <em>user</em> feels. This is what you alert and page on. But
+                  Duration is a distribution, not a number: alert on P95/P99, never the average. The average of 99 fast requests and 1
+                  ten-second request still looks fine while 1% of users are furious.
+                </>
+              ),
+            },
+            {
+              label: 'USE — the cause',
+              tone: 'warn',
+              body: (
+                <>
+                  Utilization / Saturation / Errors, per resource — CPU, disk, DB connection pool. RED tells you latency doubled; only
+                  USE explains it: the connection pool is saturated, requests are queuing for a connection. RED without USE leaves you
+                  staring at a slow endpoint with no idea which resource hit a wall.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">The pairing is the point — RED is the alert, USE is the diagnosis</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            A saturation cliff — pool exhausted, disk IOPS capped — shows as a latency spike in RED and a flat-topped graph in USE.
+            You need the second graph to know what to fix.
           </p>
         </Card>
       </Section>
@@ -60,35 +119,93 @@ export default function Layer13() {
           title="Decouple deploy from release"
           description="Ship code dark behind a flag. Ramp from 1% → 10% → 50% → 100% over hours or days. Kill the flag in seconds if metrics tank."
         >
-          <Bullets
-            items={[
-              <><strong>Deploy ≠ release.</strong> A deploy puts code on the server; a release exposes it to users. A flag splits the two: merge to main continuously, then turn the feature on for 1% → 10% → 50% → 100% while watching RED metrics. The payoff is the kill switch — a bad release is a config change reverted in seconds, not a rollback, rebuild, and redeploy under pressure.</>,
-              <><strong>Assignment must be a stable hash, not a coin flip.</strong> Bucket with <InlineCode>hash(flag_key + user_id) % 100 &lt; pct</InlineCode>. Same user, same input, same bucket every request — so a user never sees the feature flicker on and off between page loads, and your experiment data isn't garbage. Random-per-request assignment breaks both: the UX strobes, and a "user" lands in both arms of the A/B test.</>,
-              <><strong>Ramp monotonically and never un-bucket someone.</strong> Because the hash is stable, going 10% → 20% only <em>adds</em> users; nobody who had the feature loses it. That property is what lets you ramp confidently — and it's why you raise the percentage, never reshuffle the seed.</>,
-              <><strong>Flag removal is part of "done" for release flags.</strong> Each live flag is a branch in the code and a row in a config service — a release flag left in after launch is dead weight and a foot-gun (someone toggles it a year later, ships half-finished code). Ticket the removal when you create the flag.</>,
-            ]}
-          />
           <FeatureFlagRollout />
           <FlagTypes />
         </TopicCard>
+        <Steps
+          steps={[
+            { label: 'merge to main' },
+            { label: 'deploy — code on server, dark' },
+            { label: 'release: on for 1% → 10% → 50% → 100%', tone: 'ok' },
+            { label: 'RED metrics tank' },
+            { label: 'flip the flag off in seconds', tone: 'ok' },
+          ]}
+          caption={
+            <>
+              <strong>Deploy ≠ release.</strong> A deploy puts code on the server; a release exposes it to users. A flag splits the
+              two: merge to main continuously, then turn the feature on for 1% → 10% → 50% → 100% while watching RED metrics. The
+              payoff is the kill switch — a bad release is a config change reverted in seconds, not a rollback, rebuild, and redeploy
+              under pressure.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Stable hash — correct',
+              tone: 'c',
+              body: (
+                <>
+                  Bucket with <InlineCode>hash(flag_key + user_id) % 100 &lt; pct</InlineCode>. Same user, same input, same bucket
+                  every request — so a user never sees the feature flicker on and off between page loads, and your experiment data
+                  isn't garbage. Because the hash is stable, ramping 10% → 20% only <em>adds</em> users; nobody who had the feature
+                  loses it. That monotonic property is what lets you ramp confidently — raise the percentage, never reshuffle the
+                  seed.
+                </>
+              ),
+            },
+            {
+              label: 'Coin flip per request — broken',
+              tone: 'fail',
+              body: (
+                <>
+                  Random-per-request assignment breaks both guarantees: the UX strobes as the feature turns on and off between page
+                  loads, and a single "user" lands in both arms of the A/B test, poisoning the data. Assignment must be a stable hash,
+                  never a coin flip.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">The two flag mistakes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">The release flag that never dies</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Launch ships, the flag stays "just in case." A year later it's an undocumented branch nobody remembers. Someone flips it during an incident and ships code that was never finished. Release flags have a lifetime measured in <em>days</em> — remove the flag and the dead branch as the last step of the launch.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The kill switch that got deleted</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Someone "cleaned up" an ops flag, treating it like a release flag. Now the expensive-feature-under-load has no off switch, and you find out during the traffic spike. Ops/kill-switch and permission/entitlement flags are <em>permanent infrastructure</em> — they don't expire, they don't get cleaned up.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Both bugs come from one root cause: not knowing which of the four types a flag is. Release (days, remove) and Experiment (weeks, remove) are temporary; Ops/kill-switch and Permission/entitlement are permanent. Tag the type at creation — a flag with no declared type will be mismanaged.
+          <h4 className="mb-2 font-semibold">Flag removal is part of "done" for release flags</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Each live flag is a branch in the code and a row in a config service — a release flag left in after launch is dead weight
+            and a foot-gun (someone toggles it a year later, ships half-finished code). Ticket the removal when you create the flag.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'The release flag that never dies',
+              tone: 'fail',
+              body: (
+                <>
+                  Launch ships, the flag stays "just in case." A year later it's an undocumented branch nobody remembers. Someone
+                  flips it during an incident and ships code that was never finished. Release flags have a lifetime measured in{' '}
+                  <em>days</em> — remove the flag and the dead branch as the last step of the launch.
+                </>
+              ),
+            },
+            {
+              label: 'The kill switch that got deleted',
+              tone: 'warn',
+              body: (
+                <>
+                  Someone "cleaned up" an ops flag, treating it like a release flag. Now the expensive-feature-under-load has no off
+                  switch, and you find out during the traffic spike. Ops/kill-switch and permission/entitlement flags are{' '}
+                  <em>permanent infrastructure</em> — they don't expire, they don't get cleaned up.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Both bugs share one root cause: an untyped flag</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Not knowing which of the four types a flag is. Release (days, remove) and Experiment (weeks, remove) are temporary;
+            Ops/kill-switch and Permission/entitlement are permanent. Tag the type at creation — a flag with no declared type will be
+            mismanaged.
           </p>
         </Card>
       </Section>
@@ -100,34 +217,95 @@ export default function Layer13() {
           title="Don't ship lies as wins"
           description="A 5% conversion lift on 200 users is noise. Without sample-size math, every change looks great in retrospect. Pre-register the metric, the duration, and the threshold."
         >
-          <Bullets
-            items={[
-              <><strong>Compute the required N before you start, not after.</strong> Sample size falls out of three pre-chosen numbers: the baseline rate, the minimum lift worth detecting (MDE), and the power/α you'll accept (80% / 0.05 is standard). A rough rule: <InlineCode>n ≈ 16 · p(1−p) / MDE²</InlineCode> per arm. Detecting a 10%→12% lift needs ~3,800 users <em>per variant</em>. If your traffic can't reach that in a reasonable window, the test physically cannot answer the question — don't run it and pretend.</>,
-              <><strong>Significance means <InlineCode>p &lt; α</InlineCode>, not "B's bar is taller."</strong> For two conversion rates, a two-proportion z-test gives the probability this gap (or bigger) would appear if the variants were truly identical. p = 0.04 means "a 4% chance this is pure noise" — publishable. p = 0.30 means the gap is well inside what randomness produces; "B looks better" is you reading tea leaves.</>,
-              <><strong>Pre-register the metric, the horizon, and the threshold.</strong> Write down — before data flows — the one primary metric, the stop date (or pre-computed N), and the α. This is the entire defense against p-hacking: once you're allowed to pick the metric and the stopping point after seeing the data, <em>some</em> cut always looks like a win.</>,
-              <><strong>"Not significant" is a real result.</strong> It does not mean "ship it anyway, the arrow pointed up." It means either run to the planned N, or accept the change is neutral and move on. Shipping a non-significant lift is shipping noise and calling it a win.</>,
-            ]}
-          />
           <AbCalculator />
         </TopicCard>
         <Card>
-          <h4 className="mb-3 font-semibold">Peeking, p-hacking, and fixed-horizon vs sequential</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">The peeking trap</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                You check a fixed-horizon test daily and stop the moment p dips below 0.05. This is the most common way to fool yourself: p-values <em>wander</em> as data accumulates, and they cross 0.05 by chance far more than 5% of the time if you give them many chances. Repeated peeking can inflate your real false-positive rate past 30%. The test was designed for one look, at N.
-              </p>
-            </div>
-            <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Fixed-horizon vs sequential — when each</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                <strong>Fixed-horizon</strong> (classic): compute N up front, look once at the end. Simpler, the default, and what most tooling assumes. <strong>Sequential / Bayesian</strong>: designed for continuous monitoring — it applies the correction that makes peeking valid, at the cost of needing more data for the same confidence. Use it only if you genuinely need to stop early; otherwise fixed-horizon and the discipline not to peek.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Other ways to ship noise: testing 20 metrics and celebrating the one that hit p &lt; 0.05 (at α = 0.05, one in twenty is significant by pure chance); and ignoring novelty effect — a new UI gets clicks because it's new, so run long enough for that to wash out.
+          <h4 className="mb-2 font-semibold">Compute the required N before you start, not after</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Sample size falls out of three pre-chosen numbers: the baseline rate, the minimum lift worth detecting (MDE), and the
+            power/α you'll accept (80% / 0.05 is standard). A rough rule: <InlineCode>n ≈ 16 · p(1−p) / MDE²</InlineCode> per arm.
+            Detecting a 10%→12% lift needs ~3,800 users <em>per variant</em>. If your traffic can't reach that in a reasonable window,
+            the test physically cannot answer the question — don't run it and pretend.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'p < α — publishable',
+              tone: 'c',
+              body: (
+                <>
+                  For two conversion rates, a two-proportion z-test gives the probability this gap (or bigger) would appear if the
+                  variants were truly identical. p = 0.04 means "a 4% chance this is pure noise" — a real result you can act on.
+                  Significance means <InlineCode>p &lt; α</InlineCode>, not "B's bar is taller."
+                </>
+              ),
+            },
+            {
+              label: 'p = 0.30 — tea leaves',
+              tone: 'fail',
+              body: (
+                <>
+                  The gap is well inside what randomness produces; "B looks better" is you reading tea leaves. And "not significant"
+                  is a real result — it does <em>not</em> mean "ship it anyway, the arrow pointed up." Either run to the planned N, or
+                  accept the change is neutral and move on. Shipping a non-significant lift is shipping noise and calling it a win.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Pre-register the metric, the horizon, and the threshold</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Write down — before data flows — the one primary metric, the stop date (or pre-computed N), and the α. This is the entire
+            defense against p-hacking: once you're allowed to pick the metric and the stopping point after seeing the data,{' '}
+            <em>some</em> cut always looks like a win.
+          </p>
+        </Card>
+        <Steps
+          steps={[
+            { label: 'fixed-horizon test designed for one look at N' },
+            { label: 'you check it daily' },
+            { label: 'p wanders, dips below 0.05 by chance' },
+            { label: 'you stop early and "win"', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">The peeking trap.</strong> The most common way to fool yourself: p-values{' '}
+              <em>wander</em> as data accumulates, and they cross 0.05 by chance far more than 5% of the time if you give them many
+              chances. Repeated peeking can inflate your real false-positive rate past 30%. The test was designed for one look, at N.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Fixed-horizon — the default',
+              tone: 'a',
+              body: (
+                <>
+                  Compute N up front, look once at the end. Simpler, the default, and what most tooling assumes. Pair it with the
+                  discipline not to peek.
+                </>
+              ),
+            },
+            {
+              label: 'Sequential / Bayesian — stop early',
+              tone: 'b',
+              body: (
+                <>
+                  Designed for continuous monitoring — it applies the correction that makes peeking valid, at the cost of needing more
+                  data for the same confidence. Use it only if you genuinely need to stop early.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Other ways to ship noise</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Testing 20 metrics and celebrating the one that hit p &lt; 0.05 (at α = 0.05, one in twenty is significant by pure
+            chance); and ignoring novelty effect — a new UI gets clicks because it's new, so run long enough for that to wash out.
           </p>
         </Card>
       </Section>
@@ -139,16 +317,57 @@ export default function Layer13() {
           title="A schema for behavior"
           description="Inconsistent event names are why analytics queries become archaeology. Pick a verb-noun convention, define properties once, and never let raw events flow without a contract."
         >
-          <Bullets
-            items={[
-              <><strong>Schema-first, because event data is not fixable in retrospect.</strong> Define and validate the event shape <em>before</em> events flow. A bug in your code you can patch; an event you logged wrong — or never logged — for three months is data you cannot re-derive. The cost of a bad taxonomy is paid every time someone queries it, forever.</>,
-              <><strong><InlineCode>{`{noun}_{past_verb}`}</InlineCode> in one consistent casing.</strong> <InlineCode>signup_completed</InlineCode>, <InlineCode>subscription_started</InlineCode>. Past tense isn't pedantry — it forces the event to describe something that <em>happened</em>, not a UI element or an intention, which keeps the taxonomy stable as the UI changes. Mixed casing (<InlineCode>SignupCompleted</InlineCode> next to <InlineCode>signup_completed</InlineCode>) means every query needs an OR and every dashboard silently undercounts.</>,
-              <><strong>Key users on a stable internal ID, never the email.</strong> Emails change — and when one does, that user's pre-change and post-change events split into two people, and your funnel and retention numbers quietly break. Use the immutable <InlineCode>user_id</InlineCode>; for B2B also attach <InlineCode>org_id</InlineCode> / <InlineCode>$group</InlineCode> so you can roll up by account.</>,
-              <><strong>Define each property once, centrally.</strong> If <InlineCode>plan</InlineCode> is set ad-hoc at each call site, you'll get <InlineCode>"pro"</InlineCode>, <InlineCode>"Pro"</InlineCode>, and <InlineCode>"pro_monthly"</InlineCode> for the same thing. A central tracking plan (a typed wrapper, or a tool like Avo/Iteratively) makes the schema the only way to send an event.</>,
-            ]}
-          />
           <EventTaxonomy />
         </TopicCard>
+        <Card>
+          <h4 className="mb-2 font-semibold">Schema-first, because event data is not fixable in retrospect</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Define and validate the event shape <em>before</em> events flow. A bug in your code you can patch; an event you logged
+            wrong — or never logged — for three months is data you cannot re-derive. The cost of a bad taxonomy is paid every time
+            someone queries it, forever.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'Consistent {noun}_{past_verb}',
+              tone: 'c',
+              body: (
+                <>
+                  <InlineCode>signup_completed</InlineCode>, <InlineCode>subscription_started</InlineCode>, in one casing. Past tense
+                  isn't pedantry — it forces the event to describe something that <em>happened</em>, not a UI element or an intention,
+                  which keeps the taxonomy stable as the UI changes.
+                </>
+              ),
+            },
+            {
+              label: 'Mixed casing & tense',
+              tone: 'fail',
+              body: (
+                <>
+                  <InlineCode>SignupCompleted</InlineCode> next to <InlineCode>signup_completed</InlineCode> means every query needs an
+                  OR and every dashboard silently undercounts. Pick one convention and never mix.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Key users on a stable internal ID, never the email</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Emails change — and when one does, that user's pre-change and post-change events split into two people, and your funnel
+            and retention numbers quietly break. Use the immutable <InlineCode>user_id</InlineCode>; for B2B also attach{' '}
+            <InlineCode>org_id</InlineCode> / <InlineCode>$group</InlineCode> so you can roll up by account.
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">Define each property once, centrally</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            If <InlineCode>plan</InlineCode> is set ad-hoc at each call site, you'll get <InlineCode>"pro"</InlineCode>,{' '}
+            <InlineCode>"Pro"</InlineCode>, and <InlineCode>"pro_monthly"</InlineCode> for the same thing. A central tracking plan (a
+            typed wrapper, or a tool like Avo/Iteratively) makes the schema the only way to send an event.
+          </p>
+        </Card>
       </Section>
 
       <Section id="ai" kicker="13.5" title="AI / LLM Integration">
@@ -158,32 +377,136 @@ export default function Layer13() {
           title="Prompts, RAG, embeddings, cost"
           description="LLM features are now table-stakes. The work is in retrieval (RAG), structured output (function calling / JSON schemas), eval, and watching the cost meter."
         >
-          <Bullets
-            items={[
-              <><strong>RAG over fine-tuning, as the default for grounding.</strong> RAG retrieves your facts at request time and puts them in the prompt; fine-tuning bakes behavior into weights. RAG hallucinates less (the answer is constrained to retrieved passages and can cite doc IDs), updates by re-indexing one document instead of a retrain, and is far cheaper. Fine-tune only for a <em>format or behavior</em> RAG can't supply — never to teach the model facts that change.</>,
-              <><strong>The pipeline:</strong> embed the query → cosine-similarity search a vector store for top-K passages → assemble <InlineCode>system instructions + retrieved context + user query</InlineCode> → instruct the model to answer <em>from that context only</em> and cite IDs. The failure mode is retrieval, not generation: if the right passage isn't in top-K, the model either says "I don't know" (good) or fills the gap with a confident guess (bad). Eval retrieval separately from the final answer.</>,
-              <><strong>pgvector vs a dedicated vector DB — when each.</strong> pgvector if you already run Postgres and scale is moderate: no new vendor, same backups, same observability, and you can filter by tenant in the same <InlineCode>WHERE</InlineCode> clause. Reach for Pinecone/Weaviate when vector count or query latency outgrows what Postgres can serve <em>alongside</em> your OLTP load — the tell is vector queries starving the connection pool. (See the ADR in 13.8 for exactly this decision.)</>,
-              <><strong>Get structured output via function calling / JSON schema, not regex on prose.</strong> Ask the model for typed JSON and it returns parseable, validatable data. Parsing free text with string matching breaks the first time the model phrases the answer differently — which is every day.</>,
-            ]}
-          />
           <RagDiagram />
           <LlmCostCalculator />
         </TopicCard>
+        <Compare
+          items={[
+            {
+              label: 'RAG — the default for grounding',
+              tone: 'c',
+              body: (
+                <>
+                  Retrieves your facts at request time and puts them in the prompt. Hallucinates less (the answer is constrained to
+                  retrieved passages and can cite doc IDs), updates by re-indexing one document instead of a retrain, and is far
+                  cheaper.
+                </>
+              ),
+            },
+            {
+              label: 'Fine-tuning — format/behavior only',
+              tone: 'warn',
+              body: (
+                <>
+                  Bakes behavior into weights. Fine-tune only for a <em>format or behavior</em> RAG can't supply — never to teach the
+                  model facts that change, because every fact change is then a retrain.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'embed the query' },
+            { label: 'cosine-similarity search → top-K passages' },
+            { label: 'assemble system + context + query' },
+            { label: 'right passage not in top-K' },
+            { label: 'model confidently guesses', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              The pipeline: embed the query → cosine-similarity search a vector store for top-K passages → assemble{' '}
+              <InlineCode>system instructions + retrieved context + user query</InlineCode> → instruct the model to answer{' '}
+              <em>from that context only</em> and cite IDs. The failure mode is retrieval, not generation: if the right passage isn't
+              in top-K, the model either says "I don't know" (good) or fills the gap with a confident guess (bad). Eval retrieval
+              separately from the final answer.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'pgvector — moderate scale',
+              tone: 'a',
+              body: (
+                <>
+                  Use it if you already run Postgres and scale is moderate: no new vendor, same backups, same observability, and you
+                  can filter by tenant in the same <InlineCode>WHERE</InlineCode> clause. (See the ADR in 13.8 for exactly this
+                  decision.)
+                </>
+              ),
+            },
+            {
+              label: 'Pinecone / Weaviate — outgrown Postgres',
+              tone: 'b',
+              body: (
+                <>
+                  Reach for a dedicated vector DB when vector count or query latency outgrows what Postgres can serve{' '}
+                  <em>alongside</em> your OLTP load — the tell is vector queries starving the connection pool.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">The cost knobs, in priority order</h4>
+          <h4 className="mb-2 font-semibold">Structured output via function calling / JSON schema, not regex on prose</h4>
           <p className="text-[13px] leading-relaxed text-ink-dim">
-            LLM cost scales linearly with traffic and does it silently — there's no instance to notice is busy, just a meter. Pull these in order, biggest lever first:
-          </p>
-          <ul className="mt-2 space-y-1.5 text-[13px] leading-relaxed text-ink-dim">
-            <li>• <strong>Smallest model that clears the quality bar.</strong> Haiku → Sonnet → Opus is roughly a 5× price step each. Most tasks (classification, extraction, simple Q&A) don't need the frontier model — prove you need Opus, don't default to it.</li>
-            <li>• <strong>Prompt-cache the static prefix.</strong> The system instructions and retrieved context repeat across requests; cached input tokens cost ~10% of fresh ones. On a long RAG prompt this is the single largest saving — order the prompt static-first so the cache prefix is long.</li>
-            <li>• <strong>Cap output tokens.</strong> Output is 4–5× the price of input. An unbounded <InlineCode>max_tokens</InlineCode> lets a runaway generation cost 8× a normal one; set the cap to what the answer actually needs.</li>
-            <li>• <strong>Batch and back off.</strong> Use the batch API for anything not user-facing (~50% off), and retry rate-limit errors with exponential backoff so you're not paying for failed-then-retried calls.</li>
-          </ul>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Set a hard monthly spend alert on the provider account. An LLM bill doesn't spike from one bad query — it creeps, one feature and one traffic bump at a time, until the invoice surprises you.
+            Ask the model for typed JSON and it returns parseable, validatable data. Parsing free text with string matching breaks the
+            first time the model phrases the answer differently — which is every day.
           </p>
         </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">The cost knobs, in priority order</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            LLM cost scales linearly with traffic and does it silently — there's no instance to notice is busy, just a meter. Set a
+            hard monthly spend alert on the provider account: an LLM bill doesn't spike from one bad query, it creeps, one feature and
+            one traffic bump at a time, until the invoice surprises you.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: '1. Smallest model that clears the bar',
+              tone: 'c',
+              body: (
+                <>
+                  Haiku → Sonnet → Opus is roughly a 5× price step each. Most tasks (classification, extraction, simple Q&A) don't
+                  need the frontier model — prove you need Opus, don't default to it.
+                </>
+              ),
+            },
+            {
+              label: '2. Prompt-cache the static prefix',
+              tone: 'a',
+              body: (
+                <>
+                  System instructions and retrieved context repeat across requests; cached input tokens cost ~10% of fresh ones. On a
+                  long RAG prompt this is the single largest saving — order the prompt static-first so the cache prefix is long.
+                </>
+              ),
+            },
+            {
+              label: '3. Cap output tokens',
+              tone: 'b',
+              body: (
+                <>
+                  Output is 4–5× the price of input. An unbounded <InlineCode>max_tokens</InlineCode> lets a runaway generation cost 8×
+                  a normal one; set the cap to what the answer actually needs.
+                </>
+              ),
+            },
+            {
+              label: '4. Batch and back off',
+              tone: 'warn',
+              body: (
+                <>
+                  Use the batch API for anything not user-facing (~50% off), and retry rate-limit errors with exponential backoff so
+                  you're not paying for failed-then-retried calls.
+                </>
+              ),
+            },
+          ]}
+        />
         <CodePlayground
           mode="js"
           height={240}
@@ -216,31 +539,107 @@ console.log('\\nLLM answers using ONLY the retrieved context — fewer hallucina
           title="Egress is the silent killer"
           description="Most surprise bills come from data transfer (cross-AZ, cross-region, internet egress). After that: idle resources, oversized instances, and untagged things nobody owns."
         >
-          <Bullets
-            items={[
-              <><strong>Audit egress first, not compute.</strong> Compute is visible and roughly proportional to what you provisioned; data transfer is invisible and metered per GB. A surprise bill is almost always transfer — cross-AZ chatter between services, cross-region replication, internet egress, NAT gateway throughput. "Optimize compute" is the instinct and usually the wrong first move; chase the bytes.</>,
-              <><strong>Spot vs reserved vs on-demand — when each.</strong> Spot/preemptible (up to ~70% off) for stateless workers that tolerate a 2-minute eviction notice — batch jobs, queue consumers. Reserved instances / savings plans for the steady baseline you'll run regardless — you commit 1–3 years for the discount. On-demand is the expensive default; anything still on it that runs 24/7 is money you're choosing to burn.</>,
-              <><strong>Tag every resource with Owner + Environment + Project.</strong> Untagged is unowned, and unowned is never deleted — nobody dares turn off a thing they can't attribute. Tags are also how the bill becomes a per-team, per-feature breakdown instead of one undifferentiated number.</>,
-              <><strong>Logs and observability are a cost center, treat them like one.</strong> Ingest-priced log platforms scale with traffic. Sample DEBUG, compress before shipping, tier by severity (ERROR+ hot, INFO+ cheap/cold), set retention. An un-sampled debug log under load can outcost the service it's observing.</>,
-            ]}
-          />
           <CloudCostEstimator />
           <CostHabits />
         </TopicCard>
         <Card>
-          <h4 className="mb-3 font-semibold">Why egress is the one that gets you</h4>
+          <h4 className="mb-2 font-semibold">Audit egress first, not compute</h4>
           <p className="text-[13px] leading-relaxed text-ink-dim">
-            The trap is that the architecture looks fine — every service is right-sized, nothing is obviously wasteful — and the bill is still 3× expected. The cost is in the <em>connections</em>, not the boxes:
-          </p>
-          <ul className="mt-2 space-y-1.5 text-[13px] leading-relaxed text-ink-dim">
-            <li>• <strong>Cross-AZ traffic is billed both ways.</strong> Two chatty services in different availability zones pay per GB each direction, forever. Co-locate chatty pairs, or accept the resilience/cost trade deliberately.</li>
-            <li>• <strong>The NAT gateway is a metered tollbooth.</strong> Every byte from a private subnet to S3, an API, or package registries goes through it and is billed per GB processed. A VPC endpoint routes S3/DynamoDB traffic around it and kills the worst of the bill.</li>
-            <li>• <strong>Origin egress is the most expensive byte you serve.</strong> Anything cacheable served straight from your origin instead of a CDN is paying full transfer price on every hit. CDN offload turns that into a near-free cache hit.</li>
-          </ul>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            The cheap insurance: billing alerts at 50/80/100% of budget, and a weekly "leftovers" sweep — unattached volumes, idle load balancers, stale snapshots. That turns a $4k end-of-month surprise into a Tuesday-afternoon cleanup.
+            Compute is visible and roughly proportional to what you provisioned; data transfer is invisible and metered per GB. A
+            surprise bill is almost always transfer — cross-AZ chatter between services, cross-region replication, internet egress,
+            NAT gateway throughput. "Optimize compute" is the instinct and usually the wrong first move; chase the bytes.
           </p>
         </Card>
+        <Compare
+          items={[
+            {
+              label: 'Spot / preemptible',
+              tone: 'b',
+              body: (
+                <>
+                  Up to ~70% off, for stateless workers that tolerate a 2-minute eviction notice — batch jobs, queue consumers.
+                </>
+              ),
+            },
+            {
+              label: 'Reserved / savings plans',
+              tone: 'c',
+              body: (
+                <>
+                  For the steady baseline you'll run regardless — you commit 1–3 years for the discount. The right home for your 24/7
+                  floor.
+                </>
+              ),
+            },
+            {
+              label: 'On-demand',
+              tone: 'warn',
+              body: (
+                <>
+                  The expensive default. Anything still on it that runs 24/7 is money you're choosing to burn — fine for spiky or
+                  unpredictable load only.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Tag every resource with Owner + Environment + Project</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Untagged is unowned, and unowned is never deleted — nobody dares turn off a thing they can't attribute. Tags are also how
+            the bill becomes a per-team, per-feature breakdown instead of one undifferentiated number.
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">Logs and observability are a cost center — treat them like one</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Ingest-priced log platforms scale with traffic. Sample DEBUG, compress before shipping, tier by severity (ERROR+ hot,
+            INFO+ cheap/cold), set retention. An un-sampled debug log under load can outcost the service it's observing.
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">Why egress is the one that gets you</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            The trap is that the architecture looks fine — every service is right-sized, nothing is obviously wasteful — and the bill
+            is still 3× expected. The cost is in the <em>connections</em>, not the boxes. The cheap insurance: billing alerts at
+            50/80/100% of budget, and a weekly "leftovers" sweep — unattached volumes, idle load balancers, stale snapshots. That
+            turns a $4k end-of-month surprise into a Tuesday-afternoon cleanup.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'Cross-AZ traffic — billed both ways',
+              tone: 'fail',
+              body: (
+                <>
+                  Two chatty services in different availability zones pay per GB each direction, forever. Co-locate chatty pairs, or
+                  accept the resilience/cost trade deliberately.
+                </>
+              ),
+            },
+            {
+              label: 'NAT gateway — metered tollbooth',
+              tone: 'warn',
+              body: (
+                <>
+                  Every byte from a private subnet to S3, an API, or package registries goes through it and is billed per GB
+                  processed. A VPC endpoint routes S3/DynamoDB traffic around it and kills the worst of the bill.
+                </>
+              ),
+            },
+            {
+              label: 'Origin egress — priciest byte you serve',
+              tone: 'a',
+              body: (
+                <>
+                  Anything cacheable served straight from your origin instead of a CDN is paying full transfer price on every hit. CDN
+                  offload turns that into a near-free cache hit.
+                </>
+              ),
+            },
+          ]}
+        />
       </Section>
 
       <Section id="legal" kicker="13.7" title="Legal & Compliance Basics">
@@ -250,16 +649,48 @@ console.log('\\nLLM answers using ONLY the retrieved context — fewer hallucina
           title="GDPR · CCPA · cookie consent · ToS"
           description="Not legal advice — the practical engineer's checklist. The cost of getting this right is small; the cost of getting it wrong is fines and class actions."
         >
-          <Bullets
-            items={[
-              <><strong>Consent before non-essential cookies fire — and "before" is literal.</strong> The common violation isn't a missing banner; it's a banner that's there while analytics and ad scripts already loaded on page render. Under GDPR, non-essential cookies (analytics, marketing) must not be set until the user opts in, and a single "OK" isn't granular consent — categories must be individually rejectable. Reject must be as easy as accept.</>,
-              <><strong>A working deletion path is an engineering feature, not a checkbox.</strong> Right to erasure (GDPR) and deletion requests (CCPA) mean you must actually purge a user across the primary DB, replicas, backups policy, search indexes, analytics, and every sub-processor. If you can't do it on demand, you're non-compliant — and you find out under a 30-day deadline. Design the delete path while you design the schema.</>,
-              <><strong>Every sub-processor needs a DPA, and you need the list.</strong> Stripe, your email provider, your analytics vendor — each one that touches user data needs a signed Data Processing Agreement, and you must be able to produce the list. "Which third parties have our users' data?" is a question you should be able to answer in a minute, not a discovery exercise.</>,
-              <><strong>Document the lawful basis up front.</strong> Each category of processing needs a stated basis — consent, contract, or legitimate interest. This is cheap to write on day one and near-impossible to reconstruct credibly after a complaint. Pair it with: published privacy policy + ToS, TLS in transit <em>and</em> encryption at rest, an audit log of admin actions, and 72-hour breach notification readiness.</>,
-            ]}
-          />
           <ComplianceChecklist />
         </TopicCard>
+        <Steps
+          steps={[
+            { label: 'page renders' },
+            { label: 'analytics + ad scripts load immediately' },
+            { label: 'consent banner appears' },
+            { label: 'cookies already set before opt-in', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong>Consent before non-essential cookies fire — and "before" is literal.</strong> The common violation isn't a
+              missing banner; it's a banner that's there while analytics and ad scripts already loaded on page render. Under GDPR,
+              non-essential cookies (analytics, marketing) must not be set until the user opts in, and a single "OK" isn't granular
+              consent — categories must be individually rejectable. Reject must be as easy as accept.
+            </>
+          }
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">A working deletion path is an engineering feature, not a checkbox</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Right to erasure (GDPR) and deletion requests (CCPA) mean you must actually purge a user across the primary DB, replicas,
+            backups policy, search indexes, analytics, and every sub-processor. If you can't do it on demand, you're non-compliant —
+            and you find out under a 30-day deadline. Design the delete path while you design the schema.
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">Every sub-processor needs a DPA, and you need the list</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Stripe, your email provider, your analytics vendor — each one that touches user data needs a signed Data Processing
+            Agreement, and you must be able to produce the list. "Which third parties have our users' data?" is a question you should
+            be able to answer in a minute, not a discovery exercise.
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">Document the lawful basis up front</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Each category of processing needs a stated basis — consent, contract, or legitimate interest. This is cheap to write on
+            day one and near-impossible to reconstruct credibly after a complaint. Pair it with: published privacy policy + ToS, TLS
+            in transit <em>and</em> encryption at rest, an audit log of admin actions, and 72-hour breach notification readiness.
+          </p>
+        </Card>
       </Section>
 
       <Section id="adr" kicker="13.8" title="Architecture Decision Records & Documentation">
@@ -269,17 +700,48 @@ console.log('\\nLLM answers using ONLY the retrieved context — fewer hallucina
           title="Future-you (and your hires) will thank you"
           description="An ADR is a one-page decision log: context, options, decision, consequences. Cheap to write, immensely valuable when someone asks 'why did we do this?' three years later."
         >
-          <Bullets
-            items={[
-              <><strong>An ADR captures the <em>reasoning</em>, not the outcome.</strong> The code already tells you what was decided; the ADR tells you <em>why this and not the alternatives</em> — Context, Options considered, Decision, Consequences (the − costs you accepted, not just the + wins). Without it, in two years someone "fixes" a deliberate trade-off, hits the exact problem you avoided, and re-learns it the expensive way.</>,
-              <><strong>The "Revisit if" line is what makes it living.</strong> Name the concrete signals that should reopen the decision — "vector count &gt; 50M", "P95 &gt; 200ms". That converts the ADR from a tombstone into a tripwire: when a signal fires, you know to re-decide instead of drifting along on a choice whose assumptions expired.</>,
-              <><strong>One file per decision, numbered, never deleted.</strong> ADRs are append-only — mark a superseded one <InlineCode>Superseded by ADR-014</InlineCode>, don't edit or remove it. Read top to bottom, <InlineCode>/docs/adr/</InlineCode> is the chronological reasoning history of the system; deleting entries erases the part that explains the present.</>,
-              <><strong>Match each doc to one audience, or it serves none.</strong> README for new visitors, CONTRIBUTING for contributors, ADRs for decisions, runbooks for on-call, CHANGELOG for users. A doc trying to be all of these is read by nobody — and a runbook in particular is written for 3am-you under stress: concrete diagnose/mitigate steps, not prose.</>,
-            ]}
-          />
           <AdrTemplate />
           <DocsHierarchy />
         </TopicCard>
+        <Steps
+          steps={[
+            { label: 'a deliberate trade-off, undocumented' },
+            { label: 'two years pass' },
+            { label: 'someone "fixes" it' },
+            { label: 'hits the exact problem you avoided', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong>An ADR captures the <em>reasoning</em>, not the outcome.</strong> The code already tells you what was decided;
+              the ADR tells you <em>why this and not the alternatives</em> — Context, Options considered, Decision, Consequences (the −
+              costs you accepted, not just the + wins). Without it, someone re-learns the expensive way.
+            </>
+          }
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">The "Revisit if" line is what makes it living</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Name the concrete signals that should reopen the decision — "vector count &gt; 50M", "P95 &gt; 200ms". That converts the
+            ADR from a tombstone into a tripwire: when a signal fires, you know to re-decide instead of drifting along on a choice
+            whose assumptions expired.
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">One file per decision, numbered, never deleted</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            ADRs are append-only — mark a superseded one <InlineCode>Superseded by ADR-014</InlineCode>, don't edit or remove it. Read
+            top to bottom, <InlineCode>/docs/adr/</InlineCode> is the chronological reasoning history of the system; deleting entries
+            erases the part that explains the present.
+          </p>
+        </Card>
+        <Card>
+          <h4 className="mb-2 font-semibold">Match each doc to one audience, or it serves none</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            README for new visitors, CONTRIBUTING for contributors, ADRs for decisions, runbooks for on-call, CHANGELOG for users. A
+            doc trying to be all of these is read by nobody — and a runbook in particular is written for 3am-you under stress:
+            concrete diagnose/mitigate steps, not prose.
+          </p>
+        </Card>
       </Section>
 
       <Section id="quiz" kicker="Knowledge Check" title="Layer 13 Quiz">

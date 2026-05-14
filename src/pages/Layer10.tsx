@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Eye, FileText, Globe, Accessibility } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat } from '../components/UI';
+import { Section, TopicCard, InlineCode, Card, Stat, Compare, Steps } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
 import { cn } from '../lib/cn';
@@ -19,38 +19,102 @@ export default function Layer10() {
           index={0}
           title="Where does HTML get built?"
           description="Five strategies. Each trades initial latency, server cost, freshness, and complexity differently. The decision is per route, not per app — a marketing page and a logged-in dashboard want opposite answers."
-        >
-          <Bullets
-            items={[
-              <><strong className="text-ink">CSR</strong>: server ships an empty <InlineCode>{'<div id="root">'}</InlineCode> + a JS bundle; the browser builds the DOM. TTFB is instant (static file), but first paint waits on download + parse + execute. Failure mode: a crawler that doesn't run JS sees the empty shell — <em>never</em> use CSR for a page that must rank. Right for auth-walled dashboards where SEO is irrelevant.</>,
-              <><strong className="text-ink">SSR</strong>: server runs the render on every request and returns full HTML — fast first paint, indexable, can use per-request data (the logged-in user). Cost: TTFB now includes your render time, and server cost scales with traffic. The hydration JS still ships on top.</>,
-              <><strong className="text-ink">SSG</strong>: render once at build, serve the file from a CDN. Fastest and cheapest possible — TTFB and first paint are both near-instant. Failure mode: the page is frozen until the next rebuild, and a 10k-page build gets slow. Default for content that changes rarely.</>,
-              <><strong className="text-ink">ISR</strong>: SSG that self-refreshes. Serve the cached page; after a revalidation window the next request triggers a background rebuild. The one user who hits the stale window gets the old page — accept that and you get SSG speed with fresher data and no full rebuild.</>,
-              <><strong className="text-ink">RSC</strong>: components run on the server and ship <em>HTML, not JS</em> — only the interactive (client) components hydrate. SSR-class SEO with a smaller client bundle, at the cost of a new mental model and a server runtime.</>,
-            ]}
-          />
-        </TopicCard>
+        />
+        <RenderTimelineRace />
+        <Compare
+          items={[
+            {
+              label: 'CSR — built in the browser',
+              tone: 'fail',
+              body: (
+                <>
+                  Server ships an empty <InlineCode>{'<div id="root">'}</InlineCode> + a JS bundle; the browser builds the DOM. TTFB is
+                  instant (static file), but first paint waits on download + parse + execute. Failure mode: a crawler that doesn't run
+                  JS sees the empty shell — <em>never</em> use CSR for a page that must rank. Right for auth-walled dashboards where SEO
+                  is irrelevant.
+                </>
+              ),
+            },
+            {
+              label: 'SSR — rendered per request',
+              tone: 'c',
+              body: (
+                <>
+                  Server runs the render on every request and returns full HTML — fast first paint, indexable, can use per-request data
+                  (the logged-in user). Cost: TTFB now includes your render time, and server cost scales with traffic. The hydration JS
+                  still ships on top.
+                </>
+              ),
+            },
+            {
+              label: 'SSG — rendered once at build',
+              tone: 'a',
+              body: (
+                <>
+                  Render once at build, serve the file from a CDN. Fastest and cheapest possible — TTFB and first paint are both
+                  near-instant. Failure mode: the page is frozen until the next rebuild, and a 10k-page build gets slow. Default for
+                  content that changes rarely.
+                </>
+              ),
+            },
+            {
+              label: 'ISR — SSG that self-refreshes',
+              tone: 'b',
+              body: (
+                <>
+                  SSG that self-refreshes. Serve the cached page; after a revalidation window the next request triggers a background
+                  rebuild. The one user who hits the stale window gets the old page — accept that and you get SSG speed with fresher
+                  data and no full rebuild.
+                </>
+              ),
+            },
+            {
+              label: 'RSC — server components ship HTML',
+              tone: 'warn',
+              body: (
+                <>
+                  Components run on the server and ship <em>HTML, not JS</em> — only the interactive (client) components hydrate.
+                  SSR-class SEO with a smaller client bundle, at the cost of a new mental model and a server runtime.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'SSG vs ISR',
+              tone: 'a',
+              body: (
+                <>
+                  Both serve a static file from the CDN. SSG is frozen until you rebuild and redeploy; ISR re-renders in the background
+                  on a stale-while-revalidate window. Switch to ISR the moment rebuild-to-deploy latency becomes the bottleneck — e.g. a
+                  5,000-product catalog where prices change but not per request.
+                </>
+              ),
+            },
+            {
+              label: 'SSR vs RSC',
+              tone: 'warn',
+              body: (
+                <>
+                  Both render on the server per request. SSR then hydrates the <em>whole</em> tree — every component's JS ships. RSC
+                  ships zero JS for server components; only client components (<InlineCode>'use client'</InlineCode>) hydrate. RSC is SSR
+                  with the hydration bill itemized instead of flat.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">The comparisons worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-cyan-400/30 bg-cyan-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-cyan-300">SSG vs ISR</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Both serve a static file from the CDN. SSG is frozen until you rebuild and redeploy; ISR re-renders in the background on a stale-while-revalidate window. Switch to ISR the moment rebuild-to-deploy latency becomes the bottleneck — e.g. a 5,000-product catalog where prices change but not per request.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">SSR vs RSC</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Both render on the server per request. SSR then hydrates the <em>whole</em> tree — every component's JS ships. RSC ships zero JS for server components; only client components (<InlineCode>'use client'</InlineCode>) hydrate. RSC is SSR with the hydration bill itemized instead of flat.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            CSR is the odd one out: it's the only strategy where the crawler can see an empty page. Everything else (SSR/SSG/ISR/RSC) sends real HTML. The modern default is to mix — static-render the marketing pages, SSR/RSC the personalized ones, CSR only behind the login wall. Core Web Vitals and bundle profiling for these choices live in the web-performance layer.
+          <h4 className="mb-2 font-semibold">CSR is the odd one out — mix per route</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            CSR is the only strategy where the crawler can see an empty page. Everything else (SSR/SSG/ISR/RSC) sends real HTML. The
+            modern default is to mix — static-render the marketing pages, SSR/RSC the personalized ones, CSR only behind the login
+            wall.{' '}
+            <span className="text-ink-faint">Core Web Vitals and bundle profiling for these choices live in the web-performance layer.</span>
           </p>
         </Card>
-        <RenderTimelineRace />
       </Section>
 
       <Section id="hydration" kicker="10.2" title="Hydration & Streaming">
@@ -59,29 +123,69 @@ export default function Layer10() {
           index={1}
           title="Making static HTML interactive"
           description="SSR gives you HTML that looks done but isn't — buttons render but don't click yet. Hydration is the second pass where the client downloads JS and wires up the DOM the server already painted."
-        >
-          <Bullets
-            items={[
-              <><strong className="text-ink">Why a static page still ships JS</strong>: hydration walks the server-sent DOM and attaches event listeners. To know <em>what</em> listeners to attach, the framework re-runs every component's render on the client. So a component costs JS even if it never updates — the bundle tracks <em>component count</em>, not interactivity. That's the gap between first paint (HTML visible) and TTI (actually clickable).</>,
-              <><strong className="text-ink">Streaming SSR</strong>: <InlineCode>renderToPipeableStream</InlineCode> + <InlineCode>{'<Suspense>'}</InlineCode> flushes the shell immediately and streams slow subtrees as their data resolves. The user sees the header and layout before the slow product query finishes — instead of the whole page blocking on the slowest query. TTFB drops; the slow part just arrives late.</>,
-              <><strong className="text-ink">Islands / partial</strong>: Astro, Fresh, 11ty hydrate <em>only</em> the interactive components — a search box, a carousel — and ship literally zero JS for static content. The fix for the bug above: make the bundle track interactivity instead of page size.</>,
-              <><strong className="text-ink">RSC</strong>: server components render to HTML and never hydrate; only <InlineCode>'use client'</InlineCode> components ship JS. Same goal as islands, reached through the component tree instead of a separate file type.</>,
-            ]}
-          />
-        </TopicCard>
-        <Card>
-          <h4 className="mb-3 font-semibold">The failure mode worth memorizing</h4>
-          <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-            <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">A mostly-static page shipping a full hydration bundle</div>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-              A blog post is 95% text and one "share" button. With full hydration (Next.js Pages Router, Nuxt, Remix) the framework still ships and re-executes JS for the entire article tree — paragraphs, headings, the lot — just to wire up that one button. The user stares at painted-but-dead content while the bundle parses. This isn't a config you forgot; it's the default, and it's a bug for this page shape.
-            </p>
-            <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-              Fix: islands or RSC, so the article is HTML-only and the button is the sole hydrated unit. Rule of thumb — if the JS bundle grows when you add a non-interactive paragraph, your rendering strategy is wrong for the page.
-            </p>
-          </div>
-        </Card>
+        />
         <HydrationModes />
+        <Card>
+          <h4 className="mb-2 font-semibold">Why a static page still ships JS</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Hydration walks the server-sent DOM and attaches event listeners. To know <em>what</em> listeners to attach, the framework
+            re-runs every component's render on the client. So a component costs JS even if it never updates — the bundle tracks{' '}
+            <em>component count</em>, not interactivity. That's the gap between first paint (HTML visible) and TTI (actually clickable).
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'Streaming SSR',
+              tone: 'a',
+              body: (
+                <>
+                  <InlineCode>renderToPipeableStream</InlineCode> + <InlineCode>{'<Suspense>'}</InlineCode> flushes the shell immediately
+                  and streams slow subtrees as their data resolves. The user sees the header and layout before the slow product query
+                  finishes — instead of the whole page blocking on the slowest query. TTFB drops; the slow part just arrives late.
+                </>
+              ),
+            },
+            {
+              label: 'Islands / partial',
+              tone: 'c',
+              body: (
+                <>
+                  Astro, Fresh, 11ty hydrate <em>only</em> the interactive components — a search box, a carousel — and ship literally
+                  zero JS for static content. The fix for the full-hydration bug: make the bundle track interactivity instead of page
+                  size.
+                </>
+              ),
+            },
+            {
+              label: 'RSC',
+              tone: 'b',
+              body: (
+                <>
+                  Server components render to HTML and never hydrate; only <InlineCode>'use client'</InlineCode> components ship JS. Same
+                  goal as islands, reached through the component tree instead of a separate file type.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'blog post: 95% text, one "share" button' },
+            { label: 'full hydration ships JS for the whole tree' },
+            { label: 'paragraphs + headings re-execute on the client' },
+            { label: 'user stares at painted-but-dead content', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">A mostly-static page shipping a full hydration bundle.</strong> With full hydration
+              (Next.js Pages Router, Nuxt, Remix) the framework still ships and re-executes JS for the entire article tree just to wire
+              up that one button. This isn't a config you forgot; it's the default, and it's a bug for this page shape. Fix: islands or
+              RSC, so the article is HTML-only and the button is the sole hydrated unit. Rule of thumb — if the JS bundle grows when you
+              add a non-interactive paragraph, your rendering strategy is wrong for the page.
+            </>
+          }
+        />
       </Section>
 
       <Section id="meta" kicker="10.3" title="Meta Tags & Open Graph">
@@ -146,43 +250,102 @@ console.log(xml);`}
           index={5}
           title="hreflang, canonical, language routing"
           description="Ten languages of the same page look like ten near-duplicates to a crawler. Left alone, Google picks one, splits ranking signals across the rest, and serves your Spanish users the English page. hreflang + canonical tell it which URL is for whom."
-        >
-          <Bullets
-            items={[
-              <><strong className="text-ink">hreflang</strong>: <InlineCode>{'<link rel="alternate" hreflang="es-mx" href="..." />'}</InlineCode> per language/region pair maps each URL to its audience, so Google serves the right one instead of letting the English page outrank the Spanish one for Spanish searchers. The value is a language code, optionally a region (<InlineCode>es</InlineCode> vs <InlineCode>es-mx</InlineCode>) — region only when the content actually differs by country.</>,
-              <><strong className="text-ink">Must be reciprocal</strong>: every page in the set links to <em>all</em> the others <em>and itself</em>. If <InlineCode>/es/</InlineCode> lists <InlineCode>/en/</InlineCode> but <InlineCode>/en/</InlineCode> doesn't list <InlineCode>/es/</InlineCode> back, Google distrusts the whole set and ignores it. Failure mode is silent — no error, the tags just stop working.</>,
-              <><strong className="text-ink">x-default</strong>: <InlineCode>hreflang="x-default"</InlineCode> names the fallback for a language you don't serve (a German user, English/Spanish/Japanese site). Omit it and that user gets whatever Google guesses.</>,
-              <><strong className="text-ink">canonical works with it, not against it</strong>: canonical points each language page at <em>its own</em> URL — the canonical of <InlineCode>/es/</InlineCode> is <InlineCode>/es/</InlineCode>, not <InlineCode>/en/</InlineCode>. A common bug: pointing every translation's canonical at the English page, which tells Google the translations don't exist. canonical de-dupes <em>within</em> a language (query params, trailing slash, www); hreflang maps <em>across</em> languages.</>,
-            ]}
-          />
-        </TopicCard>
+        />
+        <HreflangBuilder />
+        <Compare
+          items={[
+            {
+              label: 'hreflang — maps URL to audience',
+              tone: 'a',
+              body: (
+                <>
+                  <InlineCode>{'<link rel="alternate" hreflang="es-mx" href="..." />'}</InlineCode> per language/region pair maps each URL
+                  to its audience, so Google serves the right one instead of letting the English page outrank the Spanish one for
+                  Spanish searchers. The value is a language code, optionally a region (<InlineCode>es</InlineCode> vs{' '}
+                  <InlineCode>es-mx</InlineCode>) — region only when the content actually differs by country.
+                </>
+              ),
+            },
+            {
+              label: 'Must be reciprocal',
+              tone: 'warn',
+              body: (
+                <>
+                  Every page in the set links to <em>all</em> the others <em>and itself</em>. If <InlineCode>/es/</InlineCode> lists{' '}
+                  <InlineCode>/en/</InlineCode> but <InlineCode>/en/</InlineCode> doesn't list <InlineCode>/es/</InlineCode> back, Google
+                  distrusts the whole set and ignores it. Failure mode is silent — no error, the tags just stop working.
+                </>
+              ),
+            },
+            {
+              label: 'x-default — the fallback',
+              tone: 'b',
+              body: (
+                <>
+                  <InlineCode>hreflang="x-default"</InlineCode> names the fallback for a language you don't serve (a German user,
+                  English/Spanish/Japanese site). Omit it and that user gets whatever Google guesses.
+                </>
+              ),
+            },
+            {
+              label: 'canonical — works with it, not against it',
+              tone: 'c',
+              body: (
+                <>
+                  canonical points each language page at <em>its own</em> URL — the canonical of <InlineCode>/es/</InlineCode> is{' '}
+                  <InlineCode>/es/</InlineCode>, not <InlineCode>/en/</InlineCode>. A common bug: pointing every translation's canonical
+                  at the English page, which tells Google the translations don't exist. canonical de-dupes <em>within</em> a language
+                  (query params, trailing slash, www); hreflang maps <em>across</em> languages.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'Subfolder /es/',
+              tone: 'c',
+              body: (
+                <>
+                  One domain, one set of hosting and SSL. All languages inherit the domain's accumulated authority — a new translation
+                  ranks off day one. Easiest to operate. The recommended default.
+                </>
+              ),
+            },
+            {
+              label: 'Subdomain es.site.com',
+              tone: 'warn',
+              body: (
+                <>
+                  Google treats it as a partly separate site — domain authority is split, not shared, so a new subdomain starts colder.
+                  Worth it only when languages need genuinely separate hosting or infra.
+                </>
+              ),
+            },
+            {
+              label: 'Country TLD site.es',
+              tone: 'fail',
+              body: (
+                <>
+                  Strongest geo-targeting signal — but every TLD is a separate domain to buy, host, secure, and rank from zero.
+                  Operationally heaviest. Reach for it only when per-country presence is a real business requirement.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">URL strategy — subfolder vs subdomain vs ccTLD</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-            <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Subfolder <InlineCode>/es/</InlineCode></div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                One domain, one set of hosting and SSL. All languages inherit the domain's accumulated authority — a new translation ranks off day one. Easiest to operate. The recommended default.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Subdomain <InlineCode>es.site.com</InlineCode></div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Google treats it as a partly separate site — domain authority is split, not shared, so a new subdomain starts colder. Worth it only when languages need genuinely separate hosting or infra.
-              </p>
-            </div>
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Country TLD <InlineCode>site.es</InlineCode></div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Strongest geo-targeting signal — but every TLD is a separate domain to buy, host, secure, and rank from zero. Operationally heaviest. Reach for it only when per-country presence is a real business requirement.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Default to subfolders unless you have a concrete reason not to — the authority-sharing alone usually outweighs the geo-signal of a ccTLD. The actual routing (locale detection, redirects, the <InlineCode>/es/</InlineCode> route tree) is framework work — see the frontend-frameworks layer.
+          <h4 className="mb-2 font-semibold">Default to subfolders</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Default to subfolders unless you have a concrete reason not to — the authority-sharing alone usually outweighs the
+            geo-signal of a ccTLD.{' '}
+            <span className="text-ink-faint">
+              The actual routing (locale detection, redirects, the <InlineCode>/es/</InlineCode> route tree) is framework work — see the
+              frontend-frameworks layer.
+            </span>
           </p>
         </Card>
-        <HreflangBuilder />
       </Section>
 
       <Section id="a11y" kicker="10.7" title="Accessibility Audit">
@@ -194,36 +357,57 @@ console.log(xml);`}
         >
           <A11yChecklist />
         </TopicCard>
-        <Card>
-          <h4 className="mb-3 font-semibold">The failures worth memorizing — who each one locks out</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300"><InlineCode>outline: none</InlineCode> with no replacement</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A keyboard-only user (motor impairment, power user, broken trackpad) Tabs through the page and now has no idea where they are — the focus ring was the only cursor they had. If you remove the default outline, you owe a replacement <InlineCode>:focus-visible</InlineCode> style. Never remove it bare.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300"><InlineCode>{'<div onClick>'}</InlineCode> instead of <InlineCode>{'<button>'}</InlineCode></div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A <InlineCode>div</InlineCode> isn't focusable, isn't in the tab order, and doesn't fire on Enter/Space — it works only for a mouse. A native <InlineCode>button</InlineCode> gets all of that free. Bolting on <InlineCode>role="button"</InlineCode> + <InlineCode>tabindex</InlineCode> + key handlers is re-implementing the element badly. Semantic HTML first; ARIA only when there's no native equivalent.
-              </p>
-            </div>
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Missing <InlineCode>alt</InlineCode> / skipped heading level</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A screen reader reads the file name (<InlineCode>"IMG_4021.jpg"</InlineCode>) for a missing <InlineCode>alt</InlineCode> — useless. And it builds a document outline from headings; jumping <InlineCode>h2 → h4</InlineCode> for visual size breaks the user's ability to skim by structure. Decorative image → <InlineCode>alt=""</InlineCode> (explicitly empty, not omitted) so it's skipped cleanly.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">A green Lighthouse score read as "done"</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Automated audits (Lighthouse, axe) catch maybe 30–40% — they verify <InlineCode>alt</InlineCode> exists, not that it's <em>meaningful</em>; they can't test a keyboard trap or whether a screen reader makes sense of the flow. A 100 score means "no machine-detectable failures," not "accessible." Tab through it; turn on VoiceOver.
-              </p>
-            </div>
-          </div>
-        </Card>
         <A11yScore />
+        <Compare
+          items={[
+            {
+              label: 'outline: none with no replacement',
+              tone: 'fail',
+              body: (
+                <>
+                  A keyboard-only user (motor impairment, power user, broken trackpad) Tabs through the page and now has no idea where
+                  they are — the focus ring was the only cursor they had. If you remove the default outline, you owe a replacement{' '}
+                  <InlineCode>:focus-visible</InlineCode> style. Never remove it bare.
+                </>
+              ),
+            },
+            {
+              label: '<div onClick> instead of <button>',
+              tone: 'warn',
+              body: (
+                <>
+                  A <InlineCode>div</InlineCode> isn't focusable, isn't in the tab order, and doesn't fire on Enter/Space — it works only
+                  for a mouse. A native <InlineCode>button</InlineCode> gets all of that free. Bolting on <InlineCode>role="button"</InlineCode>{' '}
+                  + <InlineCode>tabindex</InlineCode> + key handlers is re-implementing the element badly. Semantic HTML first; ARIA only
+                  when there's no native equivalent.
+                </>
+              ),
+            },
+            {
+              label: 'Missing alt / skipped heading level',
+              tone: 'fail',
+              body: (
+                <>
+                  A screen reader reads the file name (<InlineCode>"IMG_4021.jpg"</InlineCode>) for a missing <InlineCode>alt</InlineCode>{' '}
+                  — useless. And it builds a document outline from headings; jumping <InlineCode>h2 → h4</InlineCode> for visual size
+                  breaks the user's ability to skim by structure. Decorative image → <InlineCode>alt=""</InlineCode> (explicitly empty,
+                  not omitted) so it's skipped cleanly.
+                </>
+              ),
+            },
+            {
+              label: 'A green Lighthouse score read as "done"',
+              tone: 'warn',
+              body: (
+                <>
+                  Automated audits (Lighthouse, axe) catch maybe 30–40% — they verify <InlineCode>alt</InlineCode> exists, not that it's{' '}
+                  <em>meaningful</em>; they can't test a keyboard trap or whether a screen reader makes sense of the flow. A 100 score
+                  means "no machine-detectable failures," not "accessible." Tab through it; turn on VoiceOver.
+                </>
+              ),
+            },
+          ]}
+        />
       </Section>
 
       <Section id="quiz" kicker="Knowledge Check" title="Layer 10 Quiz">

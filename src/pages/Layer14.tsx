@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TestTube, Clock, Network as NetworkIcon, Camera, Zap, RotateCcw, AlertTriangle, GitBranch } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat } from '../components/UI';
+import { Section, TopicCard, InlineCode, Card, Compare, Steps } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
 import { cn } from '../lib/cn';
@@ -71,40 +71,94 @@ console.log('add(2,3) =', add(2, 3));`}
           index={2}
           title="Promises, callbacks, intervals, retries"
           description="Async tests are where flakiness is born. Always await. Never sleep. Use fake timers for code that waits."
-        >
-          <Bullets
-            items={[
-              <>Always <InlineCode>await</InlineCode> the assertion. <InlineCode>expect(p).resolves.toBe(x)</InlineCode> returns a pending promise; without <InlineCode>await</InlineCode> the test function returns synchronously, the runner sees no thrown error, and a <em>rejected</em> promise becomes an unhandled rejection logged after the green checkmark. The test passes for code that's broken.</>,
-              <>Fake timers swap <InlineCode>setTimeout</InlineCode>/<InlineCode>setInterval</InlineCode>/<InlineCode>Date</InlineCode> for a controllable clock. <InlineCode>vi.advanceTimersByTime(10_000)</InlineCode> fires a 10-second timeout in 0ms wall-clock — deterministic because <em>you</em> decide when time moves, not the OS scheduler. Without them you either <InlineCode>sleep</InlineCode> (slow + still racy) or never test the timeout path at all.</>,
-              <><InlineCode>findByRole</InlineCode> retries on a polling loop until the element appears or the timeout hits; <InlineCode>getByRole</InlineCode> queries once and throws immediately. Use <InlineCode>getBy</InlineCode> on content that renders after an <InlineCode>await</InlineCode> and you get a guaranteed flake — it fails or passes depending on whether the microtask drained before the query ran.</>,
-              <>Set timeouts per-test (<InlineCode>it('...', async () =&gt; {'{...}'}, 8000)</InlineCode>), never bump the global. A 30s global timeout doesn't fix a slow test — it hides which test is slow and turns a 2s suite into a 2-minute one when something hangs.</>,
-            ]}
-          />
-        </TopicCard>
+        />
+        <Compare
+          items={[
+            {
+              label: 'Always await the assertion',
+              tone: 'a',
+              body: (
+                <>
+                  <InlineCode>expect(p).resolves.toBe(x)</InlineCode> returns a pending promise; without <InlineCode>await</InlineCode> the
+                  test function returns synchronously, the runner sees no thrown error, and a <em>rejected</em> promise becomes an
+                  unhandled rejection logged after the green checkmark. The test passes for code that's broken.
+                </>
+              ),
+            },
+            {
+              label: 'Fake timers, not sleep',
+              tone: 'b',
+              body: (
+                <>
+                  Fake timers swap <InlineCode>setTimeout</InlineCode>/<InlineCode>setInterval</InlineCode>/<InlineCode>Date</InlineCode> for
+                  a controllable clock. <InlineCode>vi.advanceTimersByTime(10_000)</InlineCode> fires a 10-second timeout in 0ms
+                  wall-clock — deterministic because <em>you</em> decide when time moves, not the OS scheduler. Without them you either{' '}
+                  <InlineCode>sleep</InlineCode> (slow + still racy) or never test the timeout path at all.
+                </>
+              ),
+            },
+            {
+              label: 'findBy for async-rendered content',
+              tone: 'c',
+              body: (
+                <>
+                  <InlineCode>findByRole</InlineCode> retries on a polling loop until the element appears or the timeout hits;{' '}
+                  <InlineCode>getByRole</InlineCode> queries once and throws immediately. Use <InlineCode>getBy</InlineCode> on content
+                  that renders after an <InlineCode>await</InlineCode> and you get a guaranteed flake — it fails or passes depending on
+                  whether the microtask drained before the query ran.
+                </>
+              ),
+            },
+            {
+              label: 'Per-test timeouts, never the global',
+              tone: 'warn',
+              body: (
+                <>
+                  Set timeouts per-test (<InlineCode>it('...', async () =&gt; {'{...}'}, 8000)</InlineCode>), never bump the global. A 30s
+                  global timeout doesn't fix a slow test — it hides which test is slow and turns a 2s suite into a 2-minute one when
+                  something hangs.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'The silent pass',
+              tone: 'fail',
+              body: (
+                <>
+                  A test with a forgotten <InlineCode>await</InlineCode>, a missing <InlineCode>return</InlineCode> on a promise chain, or
+                  an <InlineCode>expect</InlineCode> inside an un-awaited <InlineCode>.then()</InlineCode> callback — all share one
+                  symptom: the assertion never runs before the test ends, so it can never fail. The suite is green and proves nothing.{' '}
+                  <strong className="text-rose-200">Fix:</strong> <InlineCode>await</InlineCode> every async assertion; for callback-style
+                  code use <InlineCode>expect.assertions(n)</InlineCode> so the runner <em>fails</em> if the expected count didn't run.
+                  Enable the <InlineCode>no-floating-promises</InlineCode> lint rule to catch it mechanically.
+                </>
+              ),
+            },
+            {
+              label: 'Real timers leaking into the test',
+              tone: 'warn',
+              body: (
+                <>
+                  You call <InlineCode>vi.useFakeTimers()</InlineCode> but the promise <em>inside</em> the timeout never resolves — fake
+                  timers control <InlineCode>setTimeout</InlineCode>, not the microtask queue. <InlineCode>advanceTimersByTime</InlineCode>{' '}
+                  fires the callback, but the <InlineCode>await</InlineCode> after it still needs a real tick to flush.{' '}
+                  <strong className="text-amber-200">Fix:</strong> use <InlineCode>await vi.advanceTimersByTimeAsync(ms)</InlineCode>,
+                  which drains pending microtasks between timer fires. And always <InlineCode>vi.useRealTimers()</InlineCode> in{' '}
+                  <InlineCode>afterEach</InlineCode> — a leaked fake clock makes the <em>next</em> file's timing tests fail mysteriously.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">The async failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">The silent pass</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A test with a forgotten <InlineCode>await</InlineCode>, a missing <InlineCode>return</InlineCode> on a promise chain, or an <InlineCode>expect</InlineCode> inside an un-awaited <InlineCode>.then()</InlineCode> callback — all share one symptom: the assertion never runs before the test ends, so it can never fail. The suite is green and proves nothing.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Fix: <InlineCode>await</InlineCode> every async assertion; for callback-style code use <InlineCode>expect.assertions(n)</InlineCode> so the runner <em>fails</em> if the expected count didn't run. Enable the <InlineCode>no-floating-promises</InlineCode> lint rule to catch it mechanically.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Real timers leaking into the test</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                You call <InlineCode>vi.useFakeTimers()</InlineCode> but the promise <em>inside</em> the timeout never resolves — fake timers control <InlineCode>setTimeout</InlineCode>, not the microtask queue. <InlineCode>advanceTimersByTime</InlineCode> fires the callback, but the <InlineCode>await</InlineCode> after it still needs a real tick to flush.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Fix: use <InlineCode>await vi.advanceTimersByTimeAsync(ms)</InlineCode>, which drains pending microtasks between timer fires. And always <InlineCode>vi.useRealTimers()</InlineCode> in <InlineCode>afterEach</InlineCode> — a leaked fake clock makes the <em>next</em> file's timing tests fail mysteriously.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            The through-line: an async test must have a single observable settle point the runner waits on. Anything that lets the test function return before the assertion resolves is a bug in the test, not the code — and it always fails open (green), never closed.
+          <h4 className="mb-2 font-semibold">The through-line: one observable settle point</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            An async test must have a single observable settle point the runner waits on. Anything that lets the test function return
+            before the assertion resolves is a bug in the test, not the code — and it always fails open (green), never closed.
           </p>
         </Card>
         <CodePlayground
@@ -150,30 +204,41 @@ console.log('See comments — runtime can\\'t demo Vitest here.');`}
         >
           <MockingMatrix />
         </TopicCard>
+        <Compare
+          items={[
+            {
+              label: 'Mock at the network layer',
+              tone: 'c',
+              body: (
+                <>
+                  <InlineCode>jest.mock('./api-client')</InlineCode> replaces your client module — so your URL building, header logic,
+                  query-string encoding, and response parsing never run. The test passes; a typo in the real endpoint path ships. MSW
+                  intercepts the actual HTTP request, so every line of your real <InlineCode>fetch</InlineCode> path executes and only the
+                  wire response is faked. The rule generalizes: mock as far out as you can. A mocked DB hides the SQL and the migration;
+                  a real schema (Testcontainers, SQLite) on transaction-rollback runs the query you actually wrote.
+                </>
+              ),
+            },
+            {
+              label: 'Module mocking is a refactor smell',
+              tone: 'fail',
+              body: (
+                <>
+                  Reaching for <InlineCode>vi.mock</InlineCode> on a module in the <em>middle</em> of your own logic means there's no
+                  seam — the dependency is hard-wired with an <InlineCode>import</InlineCode>. The mock is brittle: it breaks on rename,
+                  it can't be type-checked, and it couples the test to the import graph instead of the behavior. The real fix is
+                  dependency injection — pass the collaborator in as an argument or constructor param, then hand the test a plain fake.
+                  No magic, type-checked, and the seam you needed for testing is the same seam that makes the code composable.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">Why the boundary, and why <InlineCode>vi.mock</InlineCode> is the last resort</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Mock at the network layer</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                <InlineCode>jest.mock('./api-client')</InlineCode> replaces your client module — so your URL building, header logic, query-string encoding, and response parsing never run. The test passes; a typo in the real endpoint path ships. MSW intercepts the actual HTTP request, so every line of your real <InlineCode>fetch</InlineCode> path executes and only the wire response is faked.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                The rule generalizes: mock as far out as you can. A mocked DB hides the SQL and the migration; a real schema (Testcontainers, SQLite) on transaction-rollback runs the query you actually wrote.
-              </p>
-            </div>
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Module mocking is a refactor smell</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Reaching for <InlineCode>vi.mock</InlineCode> on a module in the <em>middle</em> of your own logic means there's no seam — the dependency is hard-wired with an <InlineCode>import</InlineCode>. The mock is brittle: it breaks on rename, it can't be type-checked, and it couples the test to the import graph instead of the behavior.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                The real fix is dependency injection — pass the collaborator in as an argument or constructor param, then hand the test a plain fake. No magic, type-checked, and the seam you needed for testing is the same seam that makes the code composable.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Heuristic: if a mock makes a test pass while the real integration is broken, you mocked too deep. Mock the thing you don't own (the network, the clock, the disk); never mock the thing you're trying to test.
+          <h4 className="mb-2 font-semibold">Heuristic: never mock what you're testing</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            If a mock makes a test pass while the real integration is broken, you mocked too deep. Mock the thing you don't own (the
+            network, the clock, the disk); never mock the thing you're trying to test.
           </p>
         </Card>
         <MswExample />
@@ -200,33 +265,63 @@ console.log('See comments — runtime can\\'t demo Vitest here.');`}
         >
           <CoverageTypes />
         </TopicCard>
+        <Steps
+          steps={[
+            { label: 'test calls processOrder(order)' },
+            { label: 'asserts nothing' },
+            { label: 'every line still executes' },
+            { label: 'coverage tool counts them covered' },
+            { label: 'discount off-by-one ships at 95% green', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              A test that calls <InlineCode>processOrder(order)</InlineCode> and asserts nothing still <em>executes</em> every line inside
+              it. The coverage tool counts those lines as covered — it instruments execution, not verification. So 95% statement
+              coverage with thin assertions means the code <em>ran</em> in CI; whether it produced the right answer was never checked.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Statement / line',
+              tone: 'fail',
+              body: (
+                <>
+                  "This line ran." Gameable by any test with no <InlineCode>expect</InlineCode>. Use it to find <em>untouched</em> code
+                  (genuinely useful), never as a quality bar.
+                </>
+              ),
+            },
+            {
+              label: 'Branch',
+              tone: 'warn',
+              body: (
+                <>
+                  "Both arms of every <InlineCode>if</InlineCode> ran." Forces the <InlineCode>else</InlineCode> and the early-return path.
+                  Catches the whole-branch-untested gap statement coverage hides — still says nothing about assertions.
+                </>
+              ),
+            },
+            {
+              label: 'Mutation',
+              tone: 'c',
+              body: (
+                <>
+                  "A test <em>fails</em> when the code is wrong." Flips <InlineCode>&lt;</InlineCode> to <InlineCode>&lt;=</InlineCode>,
+                  deletes a line — if the suite stays green, the mutant survived and your assertions are too weak. The only metric that
+                  measures verification.
+                </>
+              ),
+            },
+          ]}
+        />
         <Card>
-          <h4 className="mb-3 font-semibold">What 95% actually proved — and what it didn't</h4>
+          <h4 className="mb-2 font-semibold">Default: branch coverage to find gaps, mutation nightly</h4>
           <p className="text-[13px] leading-relaxed text-ink-dim">
-            A test that calls <InlineCode>processOrder(order)</InlineCode> and asserts nothing still <em>executes</em> every line inside it. The coverage tool counts those lines as covered — it instruments execution, not verification. So 95% statement coverage with thin assertions means the code <em>ran</em> in CI; whether it produced the right answer was never checked. The discount-calculation off-by-one ships at 95% green.
-          </p>
-          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Statement / line</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                "This line ran." Gameable by any test with no <InlineCode>expect</InlineCode>. Use it to find <em>untouched</em> code (genuinely useful), never as a quality bar.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Branch</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                "Both arms of every <InlineCode>if</InlineCode> ran." Forces the <InlineCode>else</InlineCode> and the early-return path. Catches the whole-branch-untested gap statement coverage hides — still says nothing about assertions.
-              </p>
-            </div>
-            <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-emerald-300">Mutation</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                "A test <em>fails</em> when the code is wrong." Flips <InlineCode>&lt;</InlineCode> to <InlineCode>&lt;=</InlineCode>, deletes a line — if the suite stays green, the mutant survived and your assertions are too weak. The only metric that measures verification.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Default: track branch coverage to find gaps, gate CI loosely (cap regressions, don't fail a PR at 79.9% vs an 80% bar — you'll get assertion-free getter tests written to clear it), and run mutation testing nightly on critical-path code. Coverage is a floor on what's <em>tested</em>, never a measure of what's <em>correct</em>.
+            Track branch coverage to find gaps, gate CI loosely (cap regressions, don't fail a PR at 79.9% vs an 80% bar — you'll get
+            assertion-free getter tests written to clear it), and run mutation testing nightly on critical-path code. Coverage is a
+            floor on what's <em>tested</em>, never a measure of what's <em>correct</em>.
           </p>
         </Card>
       </Section>

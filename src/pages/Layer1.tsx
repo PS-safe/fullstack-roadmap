@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cpu, Play, Pause, RotateCcw, Zap } from 'lucide-react';
-import { Section, TopicCard, TwoCol, Bullets, InlineCode, Stat, Card } from '../components/UI';
+import { Section, TopicCard, TwoCol, InlineCode, Stat, Card, Compare, Steps } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { MermaidDiagram } from '../components/MermaidDiagram';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
@@ -20,45 +20,120 @@ export default function Layer1() {
           index={0}
           title="Numbers, bits, encodings"
           description="Computers store everything as binary. Reading hex, understanding two's complement, and knowing IEEE 754 saves you on every off-by-one bug."
-        >
-          <Bullets
-            items={[
-              <>Hex is just binary grouped 4 bits at a time — <InlineCode>0xF</InlineCode> = <InlineCode>1111</InlineCode>. That's the whole reason it's everywhere: one hex digit = one nibble, so <InlineCode>0xFF</InlineCode> is exactly 8 bits, no mental arithmetic. Octal groups by 3 (Unix file modes: <InlineCode>0755</InlineCode>).</>,
-              <>Two's complement: negate by flipping all bits and adding 1. The point is that <InlineCode>x + (-x)</InlineCode> wraps to 0 through ordinary addition — the CPU's adder has <em>no</em> sign-handling path. The cost: the range is asymmetric. <InlineCode>int8</InlineCode> goes −128…127, so <InlineCode>-(-128)</InlineCode> overflows back to −128.</>,
-              <>IEEE 754 = sign · exponent · mantissa, i.e. binary scientific notation. <InlineCode>0.1</InlineCode> has no finite binary expansion (like <InlineCode>1/3</InlineCode> in decimal), so it's stored rounded. <InlineCode>0.1 + 0.2</InlineCode> sums two rounding errors → <InlineCode>0.30000000000000004</InlineCode>. Never <InlineCode>==</InlineCode> floats; never store money as float — use integer cents.</>,
-              <>UTF-8 is variable-width (1–4 bytes) and ASCII-compatible (a byte &lt; 0x80 is a lone ASCII char). Consequence: <InlineCode>str.length</InlineCode> in JS counts UTF-16 units, not characters — <InlineCode>"😀".length === 2</InlineCode>. "String length" is three different questions: bytes, code points, grapheme clusters.</>,
-              <>Bitwise ops are the machine's set operations: <InlineCode>x & 1</InlineCode> tests the low bit, <InlineCode>x &lt;&lt; 3</InlineCode> multiplies by 8, <InlineCode>flags |= F</InlineCode> sets a bit, <InlineCode>flags &amp; F</InlineCode> tests it. In JS the operands are coerced to <em>int32</em> first — <InlineCode>(2**31) &lt;&lt; 1</InlineCode> is 0, and that bites bitmask code at large values.</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <TwoCol>
           <BinaryConverter />
           <BitwiseExplorer />
         </TwoCol>
         <Float754Card />
-        <Card>
-          <h4 className="mb-3 font-semibold">Representation bugs worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Silent integer overflow</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A counter or ID stored in a fixed-width int wraps instead of erroring. The 2014 "Gangnam Style" bug: YouTube's view count hit <InlineCode>2,147,483,647</InlineCode> (<InlineCode>int32</InlineCode> max) and the next view wrapped it negative. Same shape as the Year 2038 problem — <InlineCode>time_t</InlineCode> as a 32-bit count of seconds since 1970 overflows in Jan 2038.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Why it's silent: two's-complement add can't tell "wrapped" from "intended." Fix: bounds-check anything that scales with users or time, or use a wide type (<InlineCode>int64</InlineCode>, JS <InlineCode>BigInt</InlineCode>).
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Float precision &amp; encoding mismatch</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                <InlineCode>0.1 + 0.2 !== 0.3</InlineCode> means a price check, a loop counter, or a "did the balance reach zero" test can be wrong by one ULP. Beyond <InlineCode>2^53</InlineCode>, JS numbers can't represent consecutive integers at all — that's why a 64-bit DB ID arrives mangled unless serialized as a string.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Encoding's version: bytes decoded with the wrong charset = mojibake (<InlineCode>café</InlineCode> → <InlineCode>cafÃ©</InlineCode>). Rule: decide bytes-vs-text at every boundary, default everything to UTF-8.
-              </p>
-            </div>
-          </div>
-        </Card>
+        <Compare
+          items={[
+            {
+              label: 'Hex & octal — bit grouping',
+              tone: 'a',
+              body: (
+                <>
+                  Hex is just binary grouped 4 bits at a time — <InlineCode>0xF</InlineCode> = <InlineCode>1111</InlineCode>. That's the
+                  whole reason it's everywhere: one hex digit = one nibble, so <InlineCode>0xFF</InlineCode> is exactly 8 bits, no mental
+                  arithmetic. Octal groups by 3 (Unix file modes: <InlineCode>0755</InlineCode>).
+                </>
+              ),
+            },
+            {
+              label: "Two's complement — signed integers",
+              tone: 'b',
+              body: (
+                <>
+                  Negate by flipping all bits and adding 1. The point is that <InlineCode>x + (-x)</InlineCode> wraps to 0 through
+                  ordinary addition — the CPU's adder has <em>no</em> sign-handling path. The cost: the range is asymmetric.{' '}
+                  <InlineCode>int8</InlineCode> goes −128…127, so <InlineCode>-(-128)</InlineCode> overflows back to −128.
+                </>
+              ),
+            },
+            {
+              label: 'IEEE 754 — floating point',
+              tone: 'c',
+              body: (
+                <>
+                  Sign · exponent · mantissa, i.e. binary scientific notation. <InlineCode>0.1</InlineCode> has no finite binary
+                  expansion (like <InlineCode>1/3</InlineCode> in decimal), so it's stored rounded. <InlineCode>0.1 + 0.2</InlineCode>{' '}
+                  sums two rounding errors → <InlineCode>0.30000000000000004</InlineCode>. Never <InlineCode>==</InlineCode> floats; never
+                  store money as float — use integer cents.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'UTF-8 — variable-width text',
+              tone: 'a',
+              body: (
+                <>
+                  UTF-8 is variable-width (1–4 bytes) and ASCII-compatible (a byte &lt; 0x80 is a lone ASCII char). Consequence:{' '}
+                  <InlineCode>str.length</InlineCode> in JS counts UTF-16 units, not characters — <InlineCode>"😀".length === 2</InlineCode>.
+                  "String length" is three different questions: bytes, code points, grapheme clusters.
+                </>
+              ),
+            },
+            {
+              label: 'Bitwise ops — set operations on bits',
+              tone: 'b',
+              body: (
+                <>
+                  Bitwise ops are the machine's set operations: <InlineCode>x & 1</InlineCode> tests the low bit, <InlineCode>x &lt;&lt; 3</InlineCode>{' '}
+                  multiplies by 8, <InlineCode>flags |= F</InlineCode> sets a bit, <InlineCode>flags &amp; F</InlineCode> tests it. In JS the
+                  operands are coerced to <em>int32</em> first — <InlineCode>(2**31) &lt;&lt; 1</InlineCode> is 0, and that bites bitmask
+                  code at large values.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Steps
+          steps={[
+            { label: 'view count hits int32 max (2,147,483,647)' },
+            { label: 'one more view' },
+            { label: 'two’s-complement add wraps' },
+            { label: 'count goes negative', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">Silent integer overflow.</strong> A counter or ID stored in a fixed-width int wraps
+              instead of erroring. The 2014 "Gangnam Style" bug: YouTube's view count hit <InlineCode>2,147,483,647</InlineCode>{' '}
+              (<InlineCode>int32</InlineCode> max) and the next view wrapped it negative. Same shape as the Year 2038 problem —{' '}
+              <InlineCode>time_t</InlineCode> as a 32-bit count of seconds since 1970 overflows in Jan 2038. Why it's silent:
+              two's-complement add can't tell "wrapped" from "intended." Fix: bounds-check anything that scales with users or time, or
+              use a wide type (<InlineCode>int64</InlineCode>, JS <InlineCode>BigInt</InlineCode>).
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Float precision drift',
+              tone: 'warn',
+              body: (
+                <>
+                  <InlineCode>0.1 + 0.2 !== 0.3</InlineCode> means a price check, a loop counter, or a "did the balance reach zero"
+                  test can be wrong by one ULP. Beyond <InlineCode>2^53</InlineCode>, JS numbers can't represent consecutive integers at
+                  all — that's why a 64-bit DB ID arrives mangled unless serialized as a string.
+                </>
+              ),
+            },
+            {
+              label: 'Encoding mismatch',
+              tone: 'fail',
+              body: (
+                <>
+                  Encoding's version of the same class of bug: bytes decoded with the wrong charset = mojibake (<InlineCode>café</InlineCode>{' '}
+                  → <InlineCode>cafÃ©</InlineCode>). Rule: decide bytes-vs-text at every boundary, default everything to UTF-8.
+                </>
+              ),
+            },
+          ]}
+        />
       </Section>
 
       <Section id="logic" kicker="1.2" title="Logic Gates & Boolean Algebra">
@@ -67,18 +142,77 @@ export default function Layer1() {
           index={1}
           title="Gates, truth tables, sequential circuits"
           description="Every CPU is built from billions of NAND gates. Boolean algebra is the math that compiles down to silicon."
-        >
-          <Bullets
-            items={[
-              <>NAND/NOR are <em>universal</em> — every other gate is built from them. This isn't trivia: it means a fab only has to perfect <em>one</em> transistor pattern and can compose the entire instruction set from it. CMOS NAND is also naturally faster and smaller than AND (AND = NAND + an inverter), so chips are literally seas of NAND.</>,
-              <>De Morgan's laws — <InlineCode>¬(A∧B) = ¬A∨¬B</InlineCode> — are the reason you can refactor <InlineCode>!(a &amp;&amp; b)</InlineCode> into <InlineCode>!a || !b</InlineCode> safely. They also explain a real bug: negating a compound condition by only flipping the comparisons and forgetting to swap <InlineCode>&amp;&amp;</InlineCode>↔<InlineCode>||</InlineCode> inverts the logic wrong.</>,
-              <>Combinational (output = pure function of inputs: adders, MUXes, the ALU) vs sequential (output depends on stored state: flip-flops, registers, FSMs). The line matters because sequential circuits need a <em>clock</em> — and that's where setup/hold timing violations and race conditions live.</>,
-              <>XOR is the workhorse: it's "are these bits different?" — used for parity checks, the carry-less part of binary addition, cheap toggling (<InlineCode>x ^= 1</InlineCode>), and detecting changed bits between two states (<InlineCode>old ^ new</InlineCode>).</>,
-              <>Karnaugh maps minimize an expression by hand for ≤4 variables; past that, synthesis tools (Quine–McCluskey, espresso) do it. Why minimize at all: fewer gates = less propagation delay and less power, the same instinct as not nesting redundant <InlineCode>if</InlineCode>s.</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <LogicGateLab />
+        <Compare
+          items={[
+            {
+              label: 'NAND / NOR are universal',
+              tone: 'a',
+              body: (
+                <>
+                  Every other gate is built from them. This isn't trivia: it means a fab only has to perfect <em>one</em> transistor
+                  pattern and can compose the entire instruction set from it. CMOS NAND is also naturally faster and smaller than AND
+                  (AND = NAND + an inverter), so chips are literally seas of NAND.
+                </>
+              ),
+            },
+            {
+              label: "De Morgan's laws",
+              tone: 'b',
+              body: (
+                <>
+                  <InlineCode>¬(A∧B) = ¬A∨¬B</InlineCode> is the reason you can refactor <InlineCode>!(a &amp;&amp; b)</InlineCode> into{' '}
+                  <InlineCode>!a || !b</InlineCode> safely. They also explain a real bug: negating a compound condition by only flipping
+                  the comparisons and forgetting to swap <InlineCode>&amp;&amp;</InlineCode>↔<InlineCode>||</InlineCode> inverts the logic
+                  wrong.
+                </>
+              ),
+            },
+            {
+              label: 'XOR — the workhorse',
+              tone: 'c',
+              body: (
+                <>
+                  XOR is "are these bits different?" — used for parity checks, the carry-less part of binary addition, cheap toggling
+                  (<InlineCode>x ^= 1</InlineCode>), and detecting changed bits between two states (<InlineCode>old ^ new</InlineCode>).
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'Combinational',
+              tone: 'a',
+              body: (
+                <>
+                  Output = pure function of inputs: adders, MUXes, the ALU. No memory — the same inputs always give the same output,
+                  immediately.
+                </>
+              ),
+            },
+            {
+              label: 'Sequential',
+              tone: 'b',
+              body: (
+                <>
+                  Output depends on stored state: flip-flops, registers, FSMs. The line matters because sequential circuits need a{' '}
+                  <em>clock</em> — and that's where setup/hold timing violations and race conditions live.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Minimization — Karnaugh maps & synthesis tools</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Karnaugh maps minimize an expression by hand for ≤4 variables; past that, synthesis tools (Quine–McCluskey, espresso) do
+            it. Why minimize at all: fewer gates = less propagation delay and less power, the same instinct as not nesting redundant{' '}
+            <InlineCode>if</InlineCode>s.
+          </p>
+        </Card>
       </Section>
 
       <Section id="ds" kicker="1.3" title="Data Structures">
@@ -87,9 +221,8 @@ export default function Layer1() {
           index={2}
           title="Pick the right structure, then write the code"
           description="Choosing the right data structure is often the difference between O(n²) and O(log n)."
-        >
-          <DataStructureTable />
-        </TopicCard>
+        />
+        <DataStructureTable />
         <TwoCol>
           <StackQueueDemo />
           <HashTableDemo />
@@ -102,42 +235,103 @@ export default function Layer1() {
           index={3}
           title="Big-O thinking & sorting"
           description="Big-O lets you compare algorithms independent of hardware. Sorting is the canonical lab — every comparison-based sort hits the Ω(n log n) wall."
-        >
-          <Bullets
-            items={[
-              <>Big-O is the <em>shape</em> of the growth curve, not the runtime. It drops constants — so an O(n) with a huge constant can lose to an O(n log n) at real n. Its real use: it tells you which input size will <em>kill</em> you. O(n²) at n=1k is a million ops (fine); at n=1M it's a trillion (a frozen request).</>,
-              <>The classic accidental O(n²): a lookup inside a loop. <InlineCode>{`items.filter(i => orders.find(o => o.id === i.id))`}</InlineCode> is n×m. Hoist <InlineCode>orders</InlineCode> into a <InlineCode>Map</InlineCode> first → the inner step is O(1), the whole thing O(n). This single refactor is the most common real-world before/after.</>,
-              <>Quicksort: O(n log n) average, <strong>O(n²) worst</strong> when the pivot is always the min/max — which happens on <em>already-sorted</em> input with a naive last-element pivot. That's a real DoS vector; production sorts use a randomized or median-of-three pivot to make the worst case unreachable by input alone.</>,
-              <>Stable (preserves input order of equal keys) vs unstable. Matters when you sort by two keys in sequence — sort by name, then by date, and only a <em>stable</em> sort keeps names ordered within each date. Mergesort and Python/JS <InlineCode>sort</InlineCode> are stable; classic quicksort and heapsort are not.</>,
-              <>Identical Big-O, different reality: quicksort beats mergesort on arrays because it's in-place and cache-friendly (sequential access), while mergesort pointer-walks an O(n) buffer. Big-O hides the ~100× cost of a cache miss — see the memory hierarchy below.</>,
-            ]}
-          />
-        </TopicCard>
+        />
         <SortingVisualizer />
         <BigOChart />
         <Card>
-          <h4 className="mb-3 font-semibold">Complexity traps worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Hidden quadratic</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                <InlineCode>arr.includes()</InlineCode>, <InlineCode>.find()</InlineCode>, or <InlineCode>.indexOf()</InlineCode> inside a loop over the same-scale collection. Each looks like one line; together they're O(n²). String building with <InlineCode>+=</InlineCode> in a loop is the same trap — each concat copies the whole string.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Tell: the code is fast in dev with 10 rows and times out in prod with 50k. Fix: a <InlineCode>Set</InlineCode>/<InlineCode>Map</InlineCode> for membership, an array <InlineCode>join</InlineCode> for strings.
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Stack overflow from recursion depth</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Recursion depth is a hard memory limit (~10–15k frames in JS), independent of Big-O. A recursive walk over a deep/degenerate tree or a long linked list throws <InlineCode>Maximum call stack size exceeded</InlineCode> — and the input that triggers it is often attacker-controlled JSON.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Fix: convert to iteration with an explicit stack/queue when input depth is unbounded. JS has no tail-call optimization, so "it reads nicely" isn't a defense.
-              </p>
-            </div>
-          </div>
+          <h4 className="mb-2 font-semibold">Big-O is the shape of the curve, not the runtime</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Big-O is the <em>shape</em> of the growth curve, not the runtime. It drops constants — so an O(n) with a huge constant can
+            lose to an O(n log n) at real n. Its real use: it tells you which input size will <em>kill</em> you. O(n²) at n=1k is a
+            million ops (fine); at n=1M it's a trillion (a frozen request).
+          </p>
         </Card>
+        <Steps
+          steps={[
+            { label: 'items.filter(i => orders.find(o => o.id === i.id))' },
+            { label: 'a lookup inside a loop' },
+            { label: 'n × m comparisons' },
+            { label: 'O(n²) — frozen request at scale', tone: 'fail' },
+            { label: 'hoist orders into a Map → O(n)', tone: 'ok' },
+          ]}
+          caption={
+            <>
+              The classic accidental O(n²): a lookup inside a loop.{' '}
+              <InlineCode>{`items.filter(i => orders.find(o => o.id === i.id))`}</InlineCode> is n×m. Hoist <InlineCode>orders</InlineCode>{' '}
+              into a <InlineCode>Map</InlineCode> first → the inner step is O(1), the whole thing O(n). This single refactor is the most
+              common real-world before/after.
+            </>
+          }
+        />
+        <Steps
+          steps={[
+            { label: 'naive last-element pivot' },
+            { label: 'input is already sorted' },
+            { label: 'pivot is always the min/max' },
+            { label: 'O(n²) — a real DoS vector', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong>Quicksort's worst case.</strong> O(n log n) average, <strong>O(n²) worst</strong> when the pivot is always the
+              min/max — which happens on <em>already-sorted</em> input with a naive last-element pivot. Production sorts use a
+              randomized or median-of-three pivot to make the worst case unreachable by input alone.
+            </>
+          }
+        />
+        <Compare
+          items={[
+            {
+              label: 'Stable vs unstable sort',
+              tone: 'a',
+              body: (
+                <>
+                  Stable preserves the input order of equal keys. Matters when you sort by two keys in sequence — sort by name, then by
+                  date, and only a <em>stable</em> sort keeps names ordered within each date. Mergesort and Python/JS{' '}
+                  <InlineCode>sort</InlineCode> are stable; classic quicksort and heapsort are not.
+                </>
+              ),
+            },
+            {
+              label: 'Same Big-O, different reality',
+              tone: 'b',
+              body: (
+                <>
+                  Quicksort beats mergesort on arrays because it's in-place and cache-friendly (sequential access), while mergesort
+                  pointer-walks an O(n) buffer. Big-O hides the ~100× cost of a cache miss — see the memory hierarchy below.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'Hidden quadratic',
+              tone: 'fail',
+              body: (
+                <>
+                  <InlineCode>arr.includes()</InlineCode>, <InlineCode>.find()</InlineCode>, or <InlineCode>.indexOf()</InlineCode>{' '}
+                  inside a loop over the same-scale collection. Each looks like one line; together they're O(n²). String building with{' '}
+                  <InlineCode>+=</InlineCode> in a loop is the same trap — each concat copies the whole string. Tell: the code is fast in
+                  dev with 10 rows and times out in prod with 50k. Fix: a <InlineCode>Set</InlineCode>/<InlineCode>Map</InlineCode> for
+                  membership, an array <InlineCode>join</InlineCode> for strings.
+                </>
+              ),
+            },
+            {
+              label: 'Stack overflow from recursion depth',
+              tone: 'warn',
+              body: (
+                <>
+                  Recursion depth is a hard memory limit (~10–15k frames in JS), independent of Big-O. A recursive walk over a
+                  deep/degenerate tree or a long linked list throws <InlineCode>Maximum call stack size exceeded</InlineCode> — and the
+                  input that triggers it is often attacker-controlled JSON. Fix: convert to iteration with an explicit stack/queue when
+                  input depth is unbounded. JS has no tail-call optimization, so "it reads nicely" isn't a defense.
+                </>
+              ),
+            },
+          ]}
+        />
       </Section>
 
       <Section id="arch" kicker="1.5" title="Computer Architecture & Memory Model">
@@ -146,18 +340,92 @@ export default function Layer1() {
           index={4}
           title="The Von Neumann machine"
           description="CPU + memory + I/O bus, wired together by the fetch–decode–execute cycle. Every program ever written runs on this loop."
-        >
-          <Bullets
-            items={[
-              <>The CPU does one thing in a loop: fetch the instruction at the program counter, decode it, execute it, advance. Registers (PC, SP, general-purpose) are the only storage at single-cycle speed — everything else is a memory access the pipeline has to stall for.</>,
-              <>Stack vs heap is a real performance choice, not just terminology. Stack alloc is one register bump and auto-freed on return — effectively free. Heap alloc needs a free-list search and later a free or GC pass. <strong>Hot loops should not allocate</strong>; that's the same advice L4 gives about GC pressure, just from the bottom up.</>,
-              <>Data locality beats cleverness. An array of structs is contiguous — the CPU prefetches the next cache line for free. A linked list or a list of pointer-chased objects scatters across RAM, so traversal is a cache miss per node (~100× an L1 hit). This is <em>why</em> the Big-O-identical mergesort loses to quicksort, and why "just use an array" is usually right.</>,
-              <>Virtual memory: every process sees a private flat address space; the MMU translates pages via page tables, cached in the TLB. A page fault (page not resident) is a ~µs trap; a fault to disk-backed swap is ~ms — 10,000× slower than RAM. Copy-on-write is why <InlineCode>fork()</InlineCode> is cheap until a page is written.</>,
-              <>Endianness: x86/ARM are little-endian, network byte order is big-endian. Read a multi-byte integer from a socket or a binary file without converting and you get a number with its bytes reversed — a bug that's invisible until the value crosses a machine boundary. Normalize at the I/O boundary, every time.</>,
-            ]}
-          />
-        </TopicCard>
+        />
+        <Steps
+          steps={[
+            { label: 'fetch instruction at the program counter' },
+            { label: 'decode it' },
+            { label: 'execute it' },
+            { label: 'advance the PC — repeat' },
+          ]}
+          caption={
+            <>
+              The CPU does one thing in a loop. Registers (PC, SP, general-purpose) are the only storage at single-cycle speed —
+              everything else is a memory access the pipeline has to stall for.
+            </>
+          }
+        />
         <MemoryHierarchy />
+        <Compare
+          items={[
+            {
+              label: 'Stack allocation',
+              tone: 'a',
+              body: (
+                <>
+                  One register bump, auto-freed on return — effectively free. This is why stack vs heap is a real performance choice,
+                  not just terminology.
+                </>
+              ),
+            },
+            {
+              label: 'Heap allocation',
+              tone: 'warn',
+              body: (
+                <>
+                  Needs a free-list search and later a free or GC pass. <strong>Hot loops should not allocate</strong> — that's the same
+                  advice L4 gives about GC pressure, just from the bottom up.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'Array of structs — contiguous',
+              tone: 'c',
+              body: (
+                <>
+                  Laid out back-to-back, so the CPU prefetches the next cache line for free. Data locality beats cleverness — this is{' '}
+                  <em>why</em> the Big-O-identical mergesort loses to quicksort, and why "just use an array" is usually right.
+                </>
+              ),
+            },
+            {
+              label: 'Linked list / pointer chase — scattered',
+              tone: 'fail',
+              body: (
+                <>
+                  Nodes scatter across RAM, so traversal is a cache miss per node — ~100× an L1 hit. The pointer indirection that makes
+                  it flexible is exactly what makes it slow.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">Virtual memory — private address space, page faults</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            Every process sees a private flat address space; the MMU translates pages via page tables, cached in the TLB. A page fault
+            (page not resident) is a ~µs trap; a fault to disk-backed swap is ~ms — 10,000× slower than RAM. Copy-on-write is why{' '}
+            <InlineCode>fork()</InlineCode> is cheap until a page is written.
+          </p>
+        </Card>
+        <Steps
+          steps={[
+            { label: 'read a multi-byte int from a socket' },
+            { label: 'sender is big-endian, x86/ARM reader is little-endian' },
+            { label: 'no conversion at the boundary' },
+            { label: 'value arrives with its bytes reversed', tone: 'fail' },
+          ]}
+          caption={
+            <>
+              <strong className="text-rose-200">Endianness.</strong> x86/ARM are little-endian, network byte order is big-endian. The
+              bug is invisible until the value crosses a machine boundary. Normalize at the I/O boundary, every time.
+            </>
+          }
+        />
       </Section>
 
       <Section id="compile" kicker="1.6" title="Compilation & Execution Pipeline">
@@ -166,16 +434,101 @@ export default function Layer1() {
           index={5}
           title="From source to running process"
           description="Source code travels through lexing, parsing, semantic analysis, IR, optimization, codegen, linking, and loading before a single instruction runs."
-        >
-          <Bullets
-            items={[
-              <>AOT vs interpreted vs JIT is a tradeoff of <em>when</em> you pay for translation. C compiles ahead-of-time: slow build, fast start, no warmup. An interpreter (CPython) walks bytecode every run: instant start, slow steady state. A JIT (V8) interprets first, then recompiles <em>hot</em> functions to native code with runtime type info — which is why a benchmark's first iteration is misleadingly slow and why a megamorphic call site (many shapes) silently deoptimizes.</>,
-              <>The linker resolves symbols <em>across</em> compilation units — that's what an "undefined reference" error actually is: a name with no definition. Static linking bakes the library into the binary (bigger, self-contained); dynamic linking resolves at load time via the PLT/GOT (smaller, but "works on my machine" / missing-<InlineCode>.so</InlineCode> failures).</>,
-              <>The loader maps the executable's segments into virtual memory, sets up the stack, and jumps to the entry point — the bridge between "a file on disk" and "a running process" with a PID.</>,
-              <>GC strategy decides <em>which</em> failure you own. Reference counting (CPython) reclaims immediately but leaks reference cycles and thrashes counters. Tracing/mark-sweep handles cycles but introduces pause times. Generational GC exploits "most objects die young" to keep pauses short — which is why <strong>allocation rate, not heap size, drives pause frequency</strong>. Reduce churn before you tune the collector.</>,
-            ]}
-          />
-        </TopicCard>
+        />
+        <Compare
+          items={[
+            {
+              label: 'AOT — compiled (C)',
+              tone: 'a',
+              body: (
+                <>
+                  Compiles ahead-of-time: slow build, fast start, no warmup. You pay the full translation cost once, before the program
+                  ever runs.
+                </>
+              ),
+            },
+            {
+              label: 'Interpreted (CPython)',
+              tone: 'b',
+              body: (
+                <>
+                  Walks bytecode every run: instant start, slow steady state. You pay a little translation cost on every single
+                  execution.
+                </>
+              ),
+            },
+            {
+              label: 'JIT — V8',
+              tone: 'c',
+              body: (
+                <>
+                  Interprets first, then recompiles <em>hot</em> functions to native code with runtime type info — which is why a
+                  benchmark's first iteration is misleadingly slow and why a megamorphic call site (many shapes) silently deoptimizes.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Compare
+          items={[
+            {
+              label: 'Static linking',
+              tone: 'a',
+              body: (
+                <>
+                  Bakes the library into the binary — bigger, but self-contained. The linker resolves symbols <em>across</em>{' '}
+                  compilation units; an "undefined reference" error is exactly that — a name with no definition.
+                </>
+              ),
+            },
+            {
+              label: 'Dynamic linking',
+              tone: 'warn',
+              body: (
+                <>
+                  Resolves at load time via the PLT/GOT — smaller binary, but "works on my machine" and missing-<InlineCode>.so</InlineCode>{' '}
+                  failures are the price.
+                </>
+              ),
+            },
+          ]}
+        />
+        <Card>
+          <h4 className="mb-2 font-semibold">The loader — file on disk to running process</h4>
+          <p className="text-[13px] leading-relaxed text-ink-dim">
+            The loader maps the executable's segments into virtual memory, sets up the stack, and jumps to the entry point — the
+            bridge between "a file on disk" and "a running process" with a PID.
+          </p>
+        </Card>
+        <Compare
+          items={[
+            {
+              label: 'Reference counting (CPython)',
+              tone: 'a',
+              body: (
+                <>
+                  Reclaims immediately, but leaks reference cycles and thrashes counters. GC strategy decides <em>which</em> failure you
+                  own.
+                </>
+              ),
+            },
+            {
+              label: 'Tracing / mark-sweep',
+              tone: 'b',
+              body: <>Handles cycles, but introduces pause times — the collector has to stop and walk the object graph.</>,
+            },
+            {
+              label: 'Generational GC',
+              tone: 'c',
+              body: (
+                <>
+                  Exploits "most objects die young" to keep pauses short — which is why <strong>allocation rate, not heap size, drives
+                  pause frequency</strong>. Reduce churn before you tune the collector.
+                </>
+              ),
+            },
+          ]}
+        />
         <MermaidDiagram
           chart={`flowchart LR
             A[Source code] --> B[Lexer<br/>tokens]

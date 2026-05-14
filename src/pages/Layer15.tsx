@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Workflow, Database, FileJson, GitBranch, Layers as LayersIcon, AlertTriangle, Play, RotateCcw } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat } from '../components/UI';
+import { Section, TopicCard, InlineCode, Card, Stat, Compare, Steps } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { MermaidDiagram } from '../components/MermaidDiagram';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
@@ -21,15 +21,73 @@ export default function Layer15() {
           title="Where you transform decides everything"
           description="ETL transforms before loading; ELT loads raw, transforms in the warehouse. Cheap warehouse compute (Snowflake/BigQuery) flipped the equation — ELT is the modern default."
         >
-          <Bullets
+          <EtlVsElt />
+          <Steps
+            steps={[
+              { label: 'metric definition turns out wrong' },
+              { label: 'ETL already transformed + discarded source rows' },
+              { label: 'fix means re-pulling from production' },
+              { label: 'production no longer holds the history', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                The deciding question is <em>can you re-derive a model after the logic changes?</em> ELT keeps an append-only,
+                immutable <strong>raw layer</strong> in the warehouse — when a metric definition is wrong, you fix the SQL and rebuild
+                from raw. ETL threw the source rows away at transform time, so a logic fix means re-pulling from production, which may no
+                longer hold the history.
+              </>
+            }
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">What flipped the equation</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Separation of storage and compute. Snowflake/BigQuery made the <strong>T</strong> a cheap SQL job you can run on demand,
+              so there's no longer a reason to pre-shrink data before it lands. ETL's "less data in the warehouse" advantage stopped
+              mattering.
+            </p>
+          </Card>
+          <Compare
             items={[
-              <>The deciding question is <em>can you re-derive a model after the logic changes?</em> ELT keeps an append-only, immutable <strong>raw layer</strong> in the warehouse — when a metric definition is wrong, you fix the SQL and rebuild from raw. ETL threw the source rows away at transform time, so a logic fix means re-pulling from production, which may no longer hold the history.</>,
-              <>What flipped the equation: separation of storage and compute. Snowflake/BigQuery made the <strong>T</strong> a cheap SQL job you can run on demand, so there's no longer a reason to pre-shrink data before it lands. ETL's "less data in the warehouse" advantage stopped mattering.</>,
-              <>ETL still wins in two cases — <strong>compliance</strong> (PII / card data must be masked or dropped <em>before</em> it touches the warehouse, because "we'll delete it later" isn't a control), and genuine <strong>volume</strong> the warehouse can't or shouldn't hold. Outside those, ETL's cost is real: transform logic hides in Python/Informatica instead of discoverable, tested SQL.</>,
-              <>Never transform the raw layer in place. Raw is the system of record for "what the source actually sent"; <InlineCode>staging</InlineCode> and <InlineCode>marts</InlineCode> are views built on top. Mutating raw destroys the one thing that makes ELT reproducible.</>,
+              {
+                label: 'ETL still wins — compliance',
+                tone: 'warn',
+                body: (
+                  <>
+                    PII / card data must be masked or dropped <em>before</em> it touches the warehouse, because "we'll delete it later"
+                    isn't a control. If the regulation says raw sensitive data can't land, ETL's transform-first order is the only safe
+                    one.
+                  </>
+                ),
+              },
+              {
+                label: 'ETL still wins — genuine volume',
+                tone: 'warn',
+                body: (
+                  <>
+                    Volume the warehouse can't or shouldn't hold. Outside compliance and volume, ETL's cost is real: transform logic
+                    hides in Python/Informatica instead of discoverable, tested SQL.
+                  </>
+                ),
+              },
+              {
+                label: 'ELT — the modern default',
+                tone: 'c',
+                body: (
+                  <>
+                    Everywhere else, load raw and transform in the warehouse. Logic is discoverable, version-controlled, tested SQL —
+                    and raw stays available to re-derive any model.
+                  </>
+                ),
+              },
             ]}
           />
-          <EtlVsElt />
+          <Card>
+            <h4 className="mb-2 font-semibold">Never transform the raw layer in place</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Raw is the system of record for "what the source actually sent"; <InlineCode>staging</InlineCode> and{' '}
+              <InlineCode>marts</InlineCode> are views built on top. Mutating raw destroys the one thing that makes ELT reproducible.
+            </p>
+          </Card>
         </TopicCard>
       </Section>
 
@@ -40,15 +98,66 @@ export default function Layer15() {
           title="Latency budget drives the architecture"
           description="Batch is cheap, simple, and fine for daily reports. Streaming is for real-time decisions: fraud, personalization, monitoring. Most real systems run both — Lambda or Kappa architecture."
         >
-          <Bullets
+          <BatchStreamingCompare />
+          <Card>
+            <h4 className="mb-2 font-semibold">Pick by latency budget, not by what sounds modern</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              The real question: <em>can the decision wait for the next batch?</em> A daily revenue report can — run batch. A fraud
+              block on a card swipe can't — it has a ~200ms budget, so it must be streaming. Streaming costs 5–10× more in infra{' '}
+              <em>and</em> operational complexity; you're buying down latency, nothing else.
+            </p>
+          </Card>
+          <Compare
             items={[
-              <>Pick by <strong>latency budget</strong>, not by what sounds modern. The real question: <em>can the decision wait for the next batch?</em> A daily revenue report can — run batch. A fraud block on a card swipe can't — it has a ~200ms budget, so it must be streaming. Streaming costs 5–10× more in infra <em>and</em> operational complexity; you're buying down latency, nothing else.</>,
-              <>Batch's hidden strength is <strong>reproducibility</strong> — a job over a bounded input (yesterday's partition) re-runs to the identical result. Streaming processes an unbounded input, so "re-run it" means replaying from a Kafka offset, and correctness now depends on windows and watermarks (§15.7). Most "we need streaming" turns out to be "we need the batch to run every 15 minutes."</>,
-              <><strong>Lambda</strong> runs a batch path and a speed path side by side: the stream gives an approximate answer now, the nightly batch overwrites it with the correct one. The cost is duplicated logic in two codebases and the reconciliation bugs when they disagree.</>,
-              <><strong>Kappa</strong> deletes the batch path — treat batch as a bounded stream, one engine, one codebase. Simpler and the default to prefer <em>if</em> your engine supports it (Flink, Materialize). Reprocessing history = replay the log from the start instead of running a separate batch job.</>,
+              {
+                label: 'Batch — reproducible',
+                tone: 'a',
+                body: (
+                  <>
+                    Batch's hidden strength is <strong>reproducibility</strong> — a job over a bounded input (yesterday's partition)
+                    re-runs to the identical result. Most "we need streaming" turns out to be "we need the batch to run every 15
+                    minutes."
+                  </>
+                ),
+              },
+              {
+                label: 'Streaming — unbounded',
+                tone: 'warn',
+                body: (
+                  <>
+                    Streaming processes an unbounded input, so "re-run it" means replaying from a Kafka offset, and correctness now
+                    depends on windows and watermarks (§15.7). You take on a whole correctness surface batch never had.
+                  </>
+                ),
+              },
             ]}
           />
-          <BatchStreamingCompare />
+          <Compare
+            items={[
+              {
+                label: 'Lambda — two paths',
+                tone: 'warn',
+                body: (
+                  <>
+                    Runs a batch path and a speed path side by side: the stream gives an approximate answer now, the nightly batch
+                    overwrites it with the correct one. The cost is duplicated logic in two codebases and the reconciliation bugs when
+                    they disagree.
+                  </>
+                ),
+              },
+              {
+                label: 'Kappa — one path',
+                tone: 'c',
+                body: (
+                  <>
+                    Deletes the batch path — treat batch as a bounded stream, one engine, one codebase. Simpler and the default to
+                    prefer <em>if</em> your engine supports it (Flink, Materialize). Reprocessing history = replay the log from the
+                    start instead of running a separate batch job.
+                  </>
+                ),
+              },
+            ]}
+          />
         </TopicCard>
       </Section>
 
@@ -59,16 +168,67 @@ export default function Layer15() {
           title="CSV is the new XML"
           description="Columnar formats (Parquet, ORC) are 5-10× smaller and 10-100× faster to query than CSV. Use Parquet for everything analytical. CSV only for human-readable handoffs."
         >
-          <Bullets
+          <FileFormatMatrix />
+          <Compare
             items={[
-              <><strong>Columnar (Parquet/ORC)</strong> stores all values of one column together. Two mechanisms fall out: <em>column projection</em> — a query touching 2 of 200 columns reads only those 2 off disk — and <em>predicate pushdown</em> — per-row-group min/max stats let the reader skip whole blocks that can't match the <InlineCode>WHERE</InlineCode>. Same-type values adjacent also compress far better, hence 5–10× smaller than CSV.</>,
-              <><strong>Row-oriented (CSV/JSON/Avro)</strong> stores a whole record contiguously — good when you write or read entire records (an event arrives, a row changes), bad for analytics because every query is a full scan of every column.</>,
-              <><strong>Avro</strong> is the streaming default: row-oriented, binary, with the schema carried alongside the data and a registry enforcing <em>schema evolution</em> rules — a consumer written against v1 can still read v3. That contract is why it fits Kafka; Parquet's columnar layout fits the query side, not the write side.</>,
-              <><strong>CSV</strong> has no schema (types are guessed, and guessed differently by every reader), no compression by default, and no way to skip data — always a full scan. The failure mode is silent: a leading-zero zip code becomes an int, a comma in a free-text field shifts every column right. Use it only when a human opens the file.</>,
-              <>Lakehouse table formats — <strong>Iceberg / Delta / Hudi</strong> — are <em>not</em> a new file format. They're Parquet data files plus a <em>manifest/metadata layer</em> that tracks which files make up the table as of each commit. That indirection is what buys ACID, time travel, and safe schema evolution on plain object storage.</>,
+              {
+                label: 'Columnar — Parquet / ORC',
+                tone: 'c',
+                body: (
+                  <>
+                    Stores all values of one column together. Two mechanisms fall out: <em>column projection</em> — a query touching 2
+                    of 200 columns reads only those 2 off disk — and <em>predicate pushdown</em> — per-row-group min/max stats let the
+                    reader skip whole blocks that can't match the <InlineCode>WHERE</InlineCode>. Same-type values adjacent also compress
+                    far better, hence 5–10× smaller than CSV.
+                  </>
+                ),
+              },
+              {
+                label: 'Row-oriented — CSV / JSON / Avro',
+                tone: 'a',
+                body: (
+                  <>
+                    Stores a whole record contiguously — good when you write or read entire records (an event arrives, a row changes),
+                    bad for analytics because every query is a full scan of every column.
+                  </>
+                ),
+              },
             ]}
           />
-          <FileFormatMatrix />
+          <Compare
+            items={[
+              {
+                label: 'Avro — the streaming default',
+                tone: 'b',
+                body: (
+                  <>
+                    Row-oriented, binary, with the schema carried alongside the data and a registry enforcing <em>schema evolution</em>{' '}
+                    rules — a consumer written against v1 can still read v3. That contract is why it fits Kafka; Parquet's columnar
+                    layout fits the query side, not the write side.
+                  </>
+                ),
+              },
+              {
+                label: 'CSV — only for humans',
+                tone: 'fail',
+                body: (
+                  <>
+                    No schema (types are guessed, and guessed differently by every reader), no compression by default, and no way to
+                    skip data — always a full scan. The failure mode is silent: a leading-zero zip code becomes an int, a comma in a
+                    free-text field shifts every column right. Use it only when a human opens the file.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">Table formats are not a file format</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Lakehouse table formats — <strong>Iceberg / Delta / Hudi</strong> — are <em>not</em> a new file format. They're Parquet
+              data files plus a <em>manifest/metadata layer</em> that tracks which files make up the table as of each commit. That
+              indirection is what buys ACID, time travel, and safe schema evolution on plain object storage.
+            </p>
+          </Card>
         </TopicCard>
       </Section>
 
@@ -79,15 +239,51 @@ export default function Layer15() {
           title="Three patterns, one storage problem"
           description="Lake: cheap object storage of raw files. Warehouse: optimized for SQL analytics. Lakehouse: warehouse semantics on lake storage (Iceberg, Delta, Hudi)."
         >
-          <Bullets
+          <StorageComparator />
+          <Compare
             items={[
-              <><strong>Lake</strong> = object storage (S3/GCS) + files + a catalog. <em>Schema-on-read</em>: you impose structure at query time, so it ingests anything — raw JSON, images, ML training sets — for near-zero cost. The price: no ACID, no concurrent updates, and a query is a full prefix scan unless you partitioned the layout well up front.</>,
-              <><strong>Warehouse</strong> = a managed engine over proprietary storage (Snowflake/BigQuery/Redshift). <em>Schema-on-write</em>, ACID, time travel, governance, sub-second SQL on TB scale. The price: vendor lock-in (your data is in their format) and a bill that climbs steeply at extreme scale or with sloppy queries.</>,
-              <><strong>Lakehouse</strong> = a table format (Iceberg/Delta) over lake storage, queryable by many engines. You get warehouse semantics — ACID, time travel — on open, cheap storage with no lock-in. The price: more moving parts you now operate yourself (a catalog, manifest compaction, small-file cleanup).</>,
-              <><strong>Default for a SaaS-scale stack: a cloud warehouse.</strong> It's the least operational surface for the most capability. Reach for a lakehouse when format openness or multi-engine access (Spark + Trino + DuckDB on the same tables) is a real, named requirement — not a "might need it later."</>,
+              {
+                label: 'Lake',
+                tone: 'a',
+                body: (
+                  <>
+                    Object storage (S3/GCS) + files + a catalog. <em>Schema-on-read</em>: you impose structure at query time, so it
+                    ingests anything — raw JSON, images, ML training sets — for near-zero cost. The price: no ACID, no concurrent
+                    updates, and a query is a full prefix scan unless you partitioned the layout well up front.
+                  </>
+                ),
+              },
+              {
+                label: 'Warehouse',
+                tone: 'c',
+                body: (
+                  <>
+                    A managed engine over proprietary storage (Snowflake/BigQuery/Redshift). <em>Schema-on-write</em>, ACID, time
+                    travel, governance, sub-second SQL on TB scale. The price: vendor lock-in (your data is in their format) and a bill
+                    that climbs steeply at extreme scale or with sloppy queries.
+                  </>
+                ),
+              },
+              {
+                label: 'Lakehouse',
+                tone: 'b',
+                body: (
+                  <>
+                    A table format (Iceberg/Delta) over lake storage, queryable by many engines. You get warehouse semantics — ACID,
+                    time travel — on open, cheap storage with no lock-in. The price: more moving parts you now operate yourself (a
+                    catalog, manifest compaction, small-file cleanup).
+                  </>
+                ),
+              },
             ]}
           />
-          <StorageComparator />
+          <Card>
+            <h4 className="mb-2 font-semibold">Default for a SaaS-scale stack: a cloud warehouse</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              It's the least operational surface for the most capability. Reach for a lakehouse when format openness or multi-engine
+              access (Spark + Trino + DuckDB on the same tables) is a real, named requirement — not a "might need it later."
+            </p>
+          </Card>
         </TopicCard>
       </Section>
 
@@ -98,15 +294,62 @@ export default function Layer15() {
           title="The transformation layer of the modern stack"
           description="dbt turns SQL into version-controlled, tested, documented modules with dependency resolution. The closest thing data engineers have to Git + tests + Make."
         >
-          <Bullets
+          <DbtDagDemo />
+          <Steps
+            steps={[
+              { label: 'hardcode a table name instead of {{ ref() }}' },
+              { label: 'dependency edge is never declared' },
+              { label: 'dbt DAG misses the ordering constraint' },
+              { label: 'downstream model builds before its source exists', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <InlineCode>{'{{ ref(\'model\') }}'}</InlineCode> is the whole trick: it both inserts the right table name <em>and</em>{' '}
+                declares a dependency edge. dbt reads every <InlineCode>ref</InlineCode>, builds a DAG, runs models in topological order,
+                and parallelizes independent branches. Hardcode a table name and you've cut the edge — dbt may build a downstream model
+                before its source exists.
+              </>
+            }
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">Layer the models so responsibility is obvious</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              <strong>staging</strong> (1:1 with a source table, rename + cast only) → <strong>intermediate</strong> (business logic,
+              joins) → <strong>marts</strong> (analyst-facing facts/dims). A mart reading <InlineCode>raw</InlineCode> directly is the
+              smell — it means cleanup logic is duplicated and untested.
+            </p>
+          </Card>
+          <Card>
+            <h4 className="mb-2 font-semibold">It's application code</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              It lives in Git, gets reviewed, and ships with tests. <InlineCode>dbt test</InlineCode> runs assertions as part of the
+              build (§15.10) so a contract violation fails the run instead of reaching a dashboard.
+            </p>
+          </Card>
+          <Compare
             items={[
-              <><InlineCode>{'{{ ref(\'model\') }}'}</InlineCode> is the whole trick: it both inserts the right table name <em>and</em> declares a dependency edge. dbt reads every <InlineCode>ref</InlineCode>, builds a DAG, runs models in topological order, and parallelizes independent branches. Hardcode a table name and you've cut the edge — dbt may build a downstream model before its source exists.</>,
-              <>Layer the models so responsibility is obvious: <strong>staging</strong> (1:1 with a source table, rename + cast only) → <strong>intermediate</strong> (business logic, joins) → <strong>marts</strong> (analyst-facing facts/dims). A mart reading <InlineCode>raw</InlineCode> directly is the smell — it means cleanup logic is duplicated and untested.</>,
-              <>It's application code: it lives in Git, gets reviewed, and ships with tests. <InlineCode>dbt test</InlineCode> runs assertions as part of the build (§15.10) so a contract violation fails the run instead of reaching a dashboard.</>,
-              <>Materialization is a config knob, not a rewrite: <InlineCode>view</InlineCode> (cheap, recomputed on read), <InlineCode>table</InlineCode> (full rebuild each run), <InlineCode>incremental</InlineCode> (append/merge only new rows). Same SQL, different cost/freshness trade-off.</>,
+              {
+                label: 'view',
+                tone: 'a',
+                body: <>Cheap, recomputed on read. No storage cost, but the query runs every time someone selects from it.</>,
+              },
+              {
+                label: 'table',
+                tone: 'c',
+                body: <>Full rebuild each run. Fast to read, predictable, and the safe default — you pay the rebuild cost up front.</>,
+              },
+              {
+                label: 'incremental',
+                tone: 'warn',
+                body: (
+                  <>
+                    Append/merge only new rows. Same SQL, different cost/freshness trade-off — but "only new rows" is a guess that adds
+                    a correctness surface (see below).
+                  </>
+                ),
+              },
             ]}
           />
-          <DbtDagDemo />
         </TopicCard>
         <Card>
           <h4 className="mb-3 font-semibold">Incremental models — the correctness surface they add</h4>
@@ -140,15 +383,45 @@ export default function Layer15() {
           title="A scheduler is not enough"
           description="Modern orchestrators give you DAGs, retries, backfills, asset lineage, alerting. Cron is the wrong tool for any pipeline that has more than two steps."
         >
-          <Bullets
-            items={[
-              <>Cron only answers "run this at 2am." It can't express "step B starts only after step A <em>succeeded</em>." Chain steps in cron and a failed step A is invisible — step B runs anyway, on stale or missing data, and corrupts everything downstream silently. An orchestrator makes the dependency the unit of control.</>,
-              <>A task starts only when <em>all</em> upstream tasks succeed; a failure <strong>quarantines</strong> the downstream subgraph rather than running it on bad input. The orchestrator should page you on failure, not blindly retry into a half-built state — retries are for transient errors (a network blip), not for "the data was wrong."</>,
-              <>Every pipeline must be <strong>idempotent and backfillable</strong>: re-running 2026-03-01 produces the identical result whether it's the first run or the fifth. That usually means each run writes to a partition keyed by its date and replaces it wholesale — never blind-appends — so a re-run can't double-count.</>,
-              <><strong>Backfill</strong> = running the pipeline across a historical date range, e.g. after a logic fix or a new model. It only works if runs are idempotent and parameterized by date; a pipeline that reads "now" instead of a run-date parameter can't be backfilled at all.</>,
-            ]}
-          />
           <AirflowDag />
+          <Steps
+            steps={[
+              { label: 'chain step A → step B in cron' },
+              { label: 'step A fails' },
+              { label: 'cron has no notion of "A succeeded"' },
+              { label: 'step B runs anyway on stale/missing data' },
+              { label: 'everything downstream corrupts silently', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                Cron only answers "run this at 2am." It can't express "step B starts only after step A <em>succeeded</em>." An
+                orchestrator makes the dependency the unit of control — a task starts only when <em>all</em> upstream tasks succeed.
+              </>
+            }
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">Failure quarantines the subgraph — it doesn't retry blindly</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              A failure <strong>quarantines</strong> the downstream subgraph rather than running it on bad input. The orchestrator
+              should page you on failure, not blindly retry into a half-built state — retries are for transient errors (a network
+              blip), not for "the data was wrong."
+            </p>
+          </Card>
+          <Card>
+            <h4 className="mb-2 font-semibold">Every pipeline must be idempotent and backfillable</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Re-running 2026-03-01 produces the identical result whether it's the first run or the fifth. That usually means each run
+              writes to a partition keyed by its date and replaces it wholesale — never blind-appends — so a re-run can't double-count.
+            </p>
+          </Card>
+          <Card>
+            <h4 className="mb-2 font-semibold">Backfill — running the pipeline over history</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              <strong>Backfill</strong> = running the pipeline across a historical date range, e.g. after a logic fix or a new model. It
+              only works if runs are idempotent and parameterized by date; a pipeline that reads "now" instead of a run-date parameter
+              can't be backfilled at all.
+            </p>
+          </Card>
         </TopicCard>
         <Card>
           <h4 className="mb-3 font-semibold">Airflow vs Dagster — when each</h4>
@@ -201,28 +474,115 @@ export default function Layer15() {
           title="Windows, watermarks, late data"
           description="Streaming is just batch with smaller batches — until you need correctness over time. Then windows, watermarks, and exactly-once become essential vocabulary."
         >
-          <Bullets
+          <StreamWindows />
+          <Card>
+            <h4 className="mb-2 font-semibold">A stream is unbounded — aggregations need a window</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Any aggregation needs a <strong>window</strong> to have a finite group to compute over.
+            </p>
+          </Card>
+          <Compare
             items={[
-              <>A stream is unbounded, so any aggregation needs a <strong>window</strong> to have a finite group to compute over. <strong>Tumbling</strong>: fixed, non-overlapping — each event in exactly one window ("orders per minute"). <strong>Sliding</strong>: fixed-size but overlapping — each event in several ("5-min moving average, stepped every minute"). <strong>Session</strong>: dynamic, closes after an inactivity gap ("how long was the user active").</>,
-              <><strong>Event time vs processing time</strong> is the root of every streaming correctness bug. Event time = when it happened (in the payload); processing time = when the engine saw it. A phone offline in a tunnel sends events with timestamps from 10 minutes ago. Window on event time or your "9:00–9:01" bucket silently depends on network conditions.</>,
-              <>A <strong>watermark</strong> is the engine's assertion: "I believe no event older than T will still arrive." When the watermark passes a window's end, the window closes and emits. It's the trade-off knob — long watermark = wait longer, more correct, higher latency; short = emit fast, risk dropping stragglers.</>,
-              <><strong>Exactly-once is something you build</strong>, not a flag: an idempotent sink (upsert on key), or a transactional write that commits the output and the consumer offset together. Without it, a crash-and-replay double-counts every event between the last checkpoint and the crash.</>,
+              {
+                label: 'Tumbling',
+                tone: 'a',
+                body: <>Fixed, non-overlapping — each event in exactly one window ("orders per minute").</>,
+              },
+              {
+                label: 'Sliding',
+                tone: 'b',
+                body: (
+                  <>Fixed-size but overlapping — each event in several ("5-min moving average, stepped every minute").</>
+                ),
+              },
+              {
+                label: 'Session',
+                tone: 'c',
+                body: <>Dynamic, closes after an inactivity gap ("how long was the user active").</>,
+              },
             ]}
           />
-          <StreamWindows />
+          <Compare
+            items={[
+              {
+                label: 'Event time',
+                tone: 'c',
+                body: (
+                  <>
+                    When it happened (in the payload). Window on event time or your "9:00–9:01" bucket silently depends on network
+                    conditions — a phone offline in a tunnel sends events with timestamps from 10 minutes ago.
+                  </>
+                ),
+              },
+              {
+                label: 'Processing time',
+                tone: 'warn',
+                body: (
+                  <>
+                    When the engine saw it. Easy and always available, but bucketing on it makes your aggregates a function of
+                    infrastructure latency, not reality. <strong>Event time vs processing time</strong> is the root of every streaming
+                    correctness bug.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">A watermark is the engine's lateness assertion</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              A <strong>watermark</strong> is the engine's assertion: "I believe no event older than T will still arrive." When the
+              watermark passes a window's end, the window closes and emits. It's the trade-off knob — long watermark = wait longer,
+              more correct, higher latency; short = emit fast, risk dropping stragglers.
+            </p>
+          </Card>
+          <Card>
+            <h4 className="mb-2 font-semibold">Exactly-once is something you build, not a flag</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              An idempotent sink (upsert on key), or a transactional write that commits the output and the consumer offset together.
+              Without it, a crash-and-replay double-counts every event between the last checkpoint and the crash.
+            </p>
+          </Card>
         </TopicCard>
         <Card>
           <h4 className="mb-3 font-semibold">The late event a missing watermark strategy drops</h4>
           <p className="text-[13px] leading-relaxed text-ink-dim">
             Tumbling window <InlineCode>09:00:00–09:01:00</InlineCode>, watermark allows 10s of lateness. An event with event-time <InlineCode>09:00:58</InlineCode> arrives at processing-time <InlineCode>09:01:15</InlineCode> — 15s after the window's end, past the watermark. The window already closed and emitted "count = 412." That event is <em>late data</em>, and what happens to it is a decision you own:
           </p>
-          <Bullets
-            items={[
-              <><strong>Drop it (the silent default).</strong> Set no allowed-lateness and Flink discards it. Your 9:00 count stays 412 forever; the true count was 413. No error, no log line — the dashboard is just quietly wrong.</>,
-              <><strong>Side-output it.</strong> Route late events to a separate stream and reconcile or alert. You keep the fast answer and don't lose the data.</>,
-              <><strong>Allow lateness + update.</strong> Keep the window state around past close; a late event re-fires the window and emits a corrected count. Correct, but every downstream consumer must handle a restated result.</>,
-            ]}
-          />
+          <div className="mt-3">
+            <Compare
+              items={[
+                {
+                  label: 'Drop it — the silent default',
+                  tone: 'fail',
+                  body: (
+                    <>
+                      Set no allowed-lateness and Flink discards it. Your 9:00 count stays 412 forever; the true count was 413. No
+                      error, no log line — the dashboard is just quietly wrong.
+                    </>
+                  ),
+                },
+                {
+                  label: 'Side-output it',
+                  tone: 'b',
+                  body: (
+                    <>
+                      Route late events to a separate stream and reconcile or alert. You keep the fast answer and don't lose the data.
+                    </>
+                  ),
+                },
+                {
+                  label: 'Allow lateness + update',
+                  tone: 'c',
+                  body: (
+                    <>
+                      Keep the window state around past close; a late event re-fires the window and emits a corrected count. Correct,
+                      but every downstream consumer must handle a restated result.
+                    </>
+                  ),
+                },
+              ]}
+            />
+          </div>
           <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
             The point: "drop late events" is a valid choice — but only if you <em>made</em> it. A streaming job with no watermark strategy has chosen it by accident, and that's how a real-time dashboard ends up under-counting fraud.
           </p>
@@ -236,15 +596,62 @@ export default function Layer15() {
           title="Database changes as a stream"
           description="Read the transaction log; emit each row change as an event. Debezium/Fivetran/Airbyte do this for you. Beats nightly full-table dumps in every dimension."
         >
-          <Bullets
+          <CdcFlow />
+          <Card>
+            <h4 className="mb-2 font-semibold">CDC tails the transaction log</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              CDC tails the database's <strong>transaction log</strong> — Postgres WAL, MySQL binlog, Mongo oplog — the same log the DB
+              uses for replication and crash recovery. Every committed change is already there, in order, so CDC reads it without
+              running a single query against your tables.
+            </p>
+          </Card>
+          <Compare
             items={[
-              <>CDC tails the database's <strong>transaction log</strong> — Postgres WAL, MySQL binlog, Mongo oplog — the same log the DB uses for replication and crash recovery. Every committed change is already there, in order, so CDC reads it without running a single query against your tables.</>,
-              <>Compare to a <strong>nightly full dump</strong>: a dump runs a heavy <InlineCode>SELECT *</InlineCode> that competes with production load, gives you data that's up to 24h stale, and shows only the <em>current</em> state — if a row changed three times that day, you see one. CDC is near-real-time, near-zero source load, and emits <em>every</em> change with its before-image.</>,
-              <>That before/after image is exactly the feed <strong>SCD Type 2</strong> (§15.9) and audit logs need — a dump can't reconstruct history it never captured. The deceptive case: a row created and deleted between two dumps is <em>invisible</em> to dumps but a clean <InlineCode>c</InlineCode> then <InlineCode>d</InlineCode> pair in CDC.</>,
-              <>Delivery is <strong>at-least-once</strong> — a connector restart can re-emit events around the last checkpoint. Consumers must be idempotent: <InlineCode>upsert</InlineCode> on the primary key, never blind <InlineCode>insert</InlineCode>. One topic per table, ordered by PK; tools are Debezium (self-host into Kafka) or Fivetran/Airbyte (managed).</>,
+              {
+                label: 'Nightly full dump',
+                tone: 'fail',
+                body: (
+                  <>
+                    Runs a heavy <InlineCode>SELECT *</InlineCode> that competes with production load, gives you data that's up to 24h
+                    stale, and shows only the <em>current</em> state — if a row changed three times that day, you see one. A row
+                    created and deleted between two dumps is <em>invisible</em>.
+                  </>
+                ),
+              },
+              {
+                label: 'CDC',
+                tone: 'c',
+                body: (
+                  <>
+                    Near-real-time, near-zero source load, and emits <em>every</em> change with its before-image. The same row created
+                    and deleted shows up as a clean <InlineCode>c</InlineCode> then <InlineCode>d</InlineCode> pair.
+                  </>
+                ),
+              },
             ]}
           />
-          <CdcFlow />
+          <Card>
+            <h4 className="mb-2 font-semibold">The before/after image is what history-keeping needs</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              That before/after image is exactly the feed <strong>SCD Type 2</strong> (§15.9) and audit logs need — a dump can't
+              reconstruct history it never captured.
+            </p>
+          </Card>
+          <Steps
+            steps={[
+              { label: 'connector restarts' },
+              { label: 're-emits events around the last checkpoint' },
+              { label: 'blind insert consumer duplicates rows', tone: 'fail' },
+              { label: 'upsert on PK consumer stays correct', tone: 'ok' },
+            ]}
+            caption={
+              <>
+                Delivery is <strong>at-least-once</strong> — a connector restart can re-emit events around the last checkpoint.
+                Consumers must be idempotent: <InlineCode>upsert</InlineCode> on the primary key, never blind <InlineCode>insert</InlineCode>.
+                One topic per table, ordered by PK; tools are Debezium (self-host into Kafka) or Fivetran/Airbyte (managed).
+              </>
+            }
+          />
         </TopicCard>
       </Section>
 
@@ -255,15 +662,69 @@ export default function Layer15() {
           title="Star schema and Slowly Changing Dimensions"
           description="Facts are events (row per event). Dimensions are descriptive attributes (customer, product). SCD describes how to handle dimensions that change over time."
         >
-          <Bullets
+          <StarSchema />
+          <Compare
             items={[
-              <>A <strong>fact</strong> table is one row per business event (a sale, a click) — foreign keys to dimensions plus numeric <em>measures</em>. A <strong>dimension</strong> is the descriptive context (who, what, where, when). The star schema deliberately <em>denormalizes</em> dimensions into wide tables: one join level from fact to any dimension, which is fast and obvious for analysts.</>,
-              <>This is the opposite instinct from the normalized OLTP schema you'd design in L5. OLTP normalizes to make <em>writes</em> safe and small; a warehouse denormalizes to make <em>reads</em> fast and joins shallow. Same data, inverted priorities. A snowflake schema re-normalizes dimensions — usually a premature optimization that just adds joins.</>,
-              <>Use a <strong>surrogate key</strong> (a warehouse-generated integer) as the dimension's primary key, not the source's natural key. SCD2 needs it: when a customer changes, you get a <em>second row for the same natural key</em> — only a distinct surrogate key can let a fact point at the version of the customer that was current when the sale happened.</>,
-              <><strong>SCD</strong> = the policy for how a dimension absorbs change. The choice is "does anyone ever need the old value?" — answer yes (almost always, for customer/product/employee) and it's Type 2.</>,
+              {
+                label: 'Fact table',
+                tone: 'b',
+                body: (
+                  <>
+                    One row per business event (a sale, a click) — foreign keys to dimensions plus numeric <em>measures</em>.
+                  </>
+                ),
+              },
+              {
+                label: 'Dimension table',
+                tone: 'a',
+                body: (
+                  <>
+                    The descriptive context (who, what, where, when). The star schema deliberately <em>denormalizes</em> dimensions
+                    into wide tables: one join level from fact to any dimension, which is fast and obvious for analysts.
+                  </>
+                ),
+              },
             ]}
           />
-          <StarSchema />
+          <Compare
+            items={[
+              {
+                label: 'OLTP — normalize (L5)',
+                tone: 'a',
+                body: (
+                  <>
+                    OLTP normalizes to make <em>writes</em> safe and small. This is the opposite instinct from the warehouse schema —
+                    same data, inverted priorities.
+                  </>
+                ),
+              },
+              {
+                label: 'Warehouse — denormalize',
+                tone: 'c',
+                body: (
+                  <>
+                    A warehouse denormalizes to make <em>reads</em> fast and joins shallow. A snowflake schema re-normalizes dimensions
+                    — usually a premature optimization that just adds joins.
+                  </>
+                ),
+              },
+            ]}
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">Surrogate key, not the source's natural key</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              Use a <strong>surrogate key</strong> (a warehouse-generated integer) as the dimension's primary key, not the source's
+              natural key. SCD2 needs it: when a customer changes, you get a <em>second row for the same natural key</em> — only a
+              distinct surrogate key can let a fact point at the version of the customer that was current when the sale happened.
+            </p>
+          </Card>
+          <Card>
+            <h4 className="mb-2 font-semibold">SCD — the policy for how a dimension absorbs change</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              <strong>SCD</strong> = the policy for how a dimension absorbs change. The choice is "does anyone ever need the old
+              value?" — answer yes (almost always, for customer/product/employee) and it's Type 2.
+            </p>
+          </Card>
           <ScdPicker />
         </TopicCard>
         <Card>
@@ -305,15 +766,63 @@ where '2025-06-30' >= c.valid_from
           title="Tests that catch bad data before users see it"
           description="dbt tests, Great Expectations, Soda. Lineage from OpenLineage / dbt docs answers 'what breaks if I change this column?' — invaluable in a 1000-model warehouse."
         >
-          <Bullets
+          <QualityTests />
+          <Steps
+            steps={[
+              { label: 'no test on order_id' },
+              { label: 'a duplicate order_id reaches the mart' },
+              { label: 'revenue double-counts — number still looks plausible' },
+              { label: 'a decision is made on it for a week', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <strong>Tests block the build.</strong> A failing dbt test fails the run, so the bad rows never reach a mart a dashboard
+                reads. The cost of skipping this isn't an error — it's silent: a duplicated <InlineCode>order_id</InlineCode>{' '}
+                double-counts revenue, the number looks plausible, and someone makes a decision on it before anyone notices.
+              </>
+            }
+          />
+          <Card>
+            <h4 className="mb-2 font-semibold">Baseline tests on every mart</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              <InlineCode>unique</InlineCode> + <InlineCode>not_null</InlineCode> on keys, <InlineCode>relationships</InlineCode> for
+              referential integrity (an orphan FK = a fact join that drops rows), <InlineCode>accepted_values</InlineCode> on enums
+              (catches a new <InlineCode>status</InlineCode> the source added without telling you), and <strong>freshness</strong> on
+              timestamps (catches a pipeline that silently stopped).
+            </p>
+          </Card>
+          <Compare
             items={[
-              <><strong>Tests block the build.</strong> A failing dbt test fails the run, so the bad rows never reach a mart a dashboard reads. The cost of skipping this isn't an error — it's silent: a duplicated <InlineCode>order_id</InlineCode> double-counts revenue, the number looks plausible, and someone makes a decision on it for a week before anyone notices.</>,
-              <>Baseline tests on every mart: <InlineCode>unique</InlineCode> + <InlineCode>not_null</InlineCode> on keys, <InlineCode>relationships</InlineCode> for referential integrity (an orphan FK = a fact join that drops rows), <InlineCode>accepted_values</InlineCode> on enums (catches a new <InlineCode>status</InlineCode> the source added without telling you), and <strong>freshness</strong> on timestamps (catches a pipeline that silently stopped).</>,
-              <>Set <strong>severity per test</strong>: <InlineCode>error</InlineCode> for "this number is wrong, halt" — duplicate keys, broken FKs; <InlineCode>warn</InlineCode> for "investigate, don't halt" — a row count drifting outside expected range. Everything as error and people start ignoring the alerts.</>,
-              <><strong>Lineage</strong> (dbt docs, OpenLineage) is the dependency graph from source column to final dashboard. It answers "what breaks if I rename this column?" before you rename it — the difference between a confident change and a guess in a 1000-model warehouse. It's also the first thing you open during an incident: trace a wrong number back to the model that produced it.</>,
+              {
+                label: 'error — halt the build',
+                tone: 'fail',
+                body: (
+                  <>
+                    For "this number is wrong, halt" — duplicate keys, broken FKs. The run fails and the bad data never ships.
+                  </>
+                ),
+              },
+              {
+                label: 'warn — investigate, don\'t halt',
+                tone: 'warn',
+                body: (
+                  <>
+                    For "investigate, don't halt" — a row count drifting outside expected range. Set <strong>severity per test</strong>;
+                    mark everything as error and people start ignoring the alerts.
+                  </>
+                ),
+              },
             ]}
           />
-          <QualityTests />
+          <Card>
+            <h4 className="mb-2 font-semibold">Lineage — the dependency graph from source to dashboard</h4>
+            <p className="text-[13px] leading-relaxed text-ink-dim">
+              <strong>Lineage</strong> (dbt docs, OpenLineage) is the dependency graph from source column to final dashboard. It answers
+              "what breaks if I rename this column?" before you rename it — the difference between a confident change and a guess in a
+              1000-model warehouse. It's also the first thing you open during an incident: trace a wrong number back to the model that
+              produced it.
+            </p>
+          </Card>
         </TopicCard>
         <CodePlayground
           mode="js"
