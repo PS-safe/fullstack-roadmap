@@ -1,6 +1,6 @@
-import { motion } from 'framer-motion';
-import { Check } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Check, ChevronDown } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { useProgress } from '../lib/progress';
 
@@ -143,6 +143,55 @@ export function Stat({ label, value, sub }: { label: string; value: ReactNode; s
       <div className="text-xs uppercase tracking-widest text-ink-faint">{label}</div>
       <div className="mt-1 text-2xl font-semibold">{value}</div>
       {sub && <div className="mt-1 text-xs text-ink-dim">{sub}</div>}
+    </div>
+  );
+}
+
+/**
+ * Progressive-disclosure container. Collapsed by default — keeps a page's
+ * deep detail one tap away instead of a wall of text. Expands with motion.
+ */
+export function DeepDive({
+  label = 'Go deeper',
+  children,
+  defaultOpen = false,
+}: {
+  label?: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all',
+          open
+            ? 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'
+            : 'border-white/10 bg-white/5 text-ink-dim hover:bg-white/10',
+        )}
+      >
+        <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }} className="inline-flex">
+          <ChevronDown className="h-3.5 w-3.5" />
+        </motion.span>
+        {open ? 'Show less' : label}
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="deepdive-content"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.28, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 space-y-4">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

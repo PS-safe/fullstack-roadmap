@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Server, KeyRound, Inbox, RotateCcw } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat } from '../components/UI';
+import { Section, TopicCard, Bullets, InlineCode, Card, Stat, DeepDive } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { MermaidDiagram } from '../components/MermaidDiagram';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
@@ -20,7 +20,9 @@ export default function Layer5() {
           index={0}
           title="REST, GraphQL, gRPC, OpenAPI"
           description="The protocol isn't a taste choice — it's set by who consumes you and how much you control both ends. The contract is the product: the request shape, the response shape, and every error case."
-        >
+        />
+        <DeepDive label="Go deeper">
+          <Card>
           <Bullets
             items={[
               <>REST: resources as plural nouns, HTTP methods carry the verb (<InlineCode>GET/POST/PUT/PATCH/DELETE</InlineCode>) — a path like <InlineCode>/getUser</InlineCode> means you've thrown away the method's semantics. <InlineCode>PUT</InlineCode> and <InlineCode>DELETE</InlineCode> are idempotent, <InlineCode>POST</InlineCode> is not — clients and proxies retry on that assumption. Version in the path (<InlineCode>/v1</InlineCode>) so a breaking change is a new namespace, not a silent client break.</>,
@@ -30,8 +32,8 @@ export default function Layer5() {
               <>OpenAPI is the machine-readable contract — it generates clients, mocks, and request validation, so the spec and the running code can't drift. Document every error case, not just the 200; an undocumented 422 shape is a client bug you shipped.</>,
             ]}
           />
-        </TopicCard>
-        <Card>
+          </Card>
+          <Card>
           <h4 className="mb-3 font-semibold">API failure modes worth memorizing</h4>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
@@ -56,7 +58,8 @@ export default function Layer5() {
           <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
             HTTP status semantics (which method is safe/idempotent, what 401 vs 403 vs 422 mean on the wire) are L3's domain — API design is about the resource model and contract <em>on top of</em> that transport.
           </p>
-        </Card>
+          </Card>
+        </DeepDive>
         <RestVsGraphql />
       </Section>
 
@@ -66,7 +69,9 @@ export default function Layer5() {
           index={1}
           title="Identity vs permission"
           description="AuthN answers 'who are you?'. AuthZ answers 'may you do this — to this specific row?'. Every protected route does both, and the second half is where real APIs break."
-        >
+        />
+        <DeepDive label="Go deeper">
+          <Card>
           <Bullets
             items={[
               <>Passwords get a <em>slow</em> hash on purpose: <InlineCode>argon2id</InlineCode> (or <InlineCode>bcrypt</InlineCode> cost 12+) is memory-hard, so an attacker with a stolen DB can't GPU-grind billions of guesses per second. MD5/SHA1 are fast hashes — a fast hash on a password is a leaked password. Per-row salt is built in; it stops one rainbow table from cracking the whole table.</>,
@@ -76,8 +81,8 @@ export default function Layer5() {
               <>Authorization model: RBAC (roles) for most apps; ABAC when access depends on attributes (region, time, ownership); ReBAC (Zanzibar-style relationship graph) when it depends on "is X related to Y". Keep the check in <em>one</em> place — middleware or a policy module. Scattered per-handler <InlineCode>if</InlineCode>s are how one handler ends up missing the check.</>,
             ]}
           />
-        </TopicCard>
-        <Card>
+          </Card>
+          <Card>
           <h4 className="mb-3 font-semibold">The vulnerability worth memorizing: IDOR</h4>
           <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
             <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Insecure Direct Object Reference</div>
@@ -91,7 +96,8 @@ export default function Layer5() {
           <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
             Use UUIDs over sequential ids so resources aren't trivially enumerable — but that's defense in depth, not the fix. The ownership check is the fix; an unguessable id without it just slows the attacker down.
           </p>
-        </Card>
+          </Card>
+        </DeepDive>
         <JwtDecoder />
       </Section>
 
@@ -101,7 +107,9 @@ export default function Layer5() {
           index={2}
           title="Pick the model that matches your access pattern"
           description="Postgres is the default — you almost always want transactions, joins, and constraints. Reach for NoSQL for a specific reason: a fixed access pattern, a write volume relational can't take, or genuinely document-shaped data."
-        >
+        />
+        <DeepDive label="Go deeper">
+          <Card>
           <Bullets
             items={[
               <>Know your default isolation level — Postgres is READ COMMITTED, which still allows lost updates across a read-then-write. A balance read in request A and a write in request B interleave and one update vanishes. Fix with a transaction + <InlineCode>SELECT ... FOR UPDATE</InlineCode>, or an optimistic <InlineCode>version</InlineCode> column. SERIALIZABLE removes the anomaly but adds serialization failures you must retry.</>,
@@ -112,8 +120,8 @@ export default function Layer5() {
               <>Datastore choice: document (MongoDB) when data is genuinely document-shaped — the shard key is permanent, get it right. Key-value (Redis) for cache, sessions, rate-limit counters, leaderboards — not a source of truth unless you've accepted the durability tradeoff. Wide-column (Cassandra/Dynamo) for massive write throughput with known query patterns, modeling a table per query.</>,
             ]}
           />
-        </TopicCard>
-        <Card>
+          </Card>
+          <Card>
           <h4 className="mb-3 font-semibold">Two database failure modes worth memorizing</h4>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
@@ -138,7 +146,8 @@ export default function Layer5() {
           <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
             Rule of thumb: normalize until it hurts, denormalize until it works. 3NF by default; denormalize deliberately for a <em>measured</em> read-heavy path, and own the consistency cost — a copied value is a value that can go stale.
           </p>
-        </Card>
+          </Card>
+        </DeepDive>
         <IndexDemo />
         <MermaidDiagram
           chart={`erDiagram
@@ -179,7 +188,9 @@ export default function Layer5() {
           index={3}
           title="Cache-aside, write-through, write-behind"
           description="Caches trade staleness for speed. The strategy you pick decides which failure mode you own — a stale read, a slow write, or a lost write."
-        >
+        />
+        <DeepDive label="Go deeper">
+          <Card>
           <Bullets
             items={[
               <>Cache-aside (lazy): read checks cache → miss → load DB → populate. Writes hit the DB and <em>delete</em> the key (don't update it — a concurrent reader can repopulate stale and win the race). Failure mode: cold start, every key missing at once.</>,
@@ -188,8 +199,8 @@ export default function Layer5() {
               <>Every key needs a TTL <em>and</em> jitter (<InlineCode>ttl + rand(0, ttl/4)</InlineCode>). Identical TTLs set during a deploy all expire in the same second → synchronized stampede on the DB.</>,
             ]}
           />
-        </TopicCard>
-        <Card>
+          </Card>
+          <Card>
           <h4 className="mb-3 font-semibold">The two failure modes worth memorizing</h4>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
@@ -217,7 +228,8 @@ export default function Layer5() {
           <p className="mt-2 text-[13px] leading-relaxed text-ink-faint">
             Default to cache-aside + short TTL + jitter. Reach for write-through only when a stale read is unacceptable; reach for write-behind only when the write is cheap to lose. As the standards put it: prefer short TTLs over clever invalidation you'll get wrong.
           </p>
-        </Card>
+          </Card>
+        </DeepDive>
         <CacheAnimator />
       </Section>
 
@@ -227,7 +239,9 @@ export default function Layer5() {
           index={4}
           title="Decouple producers from consumers"
           description="Reach for a queue to decouple producer from consumer, absorb a traffic spike, or fan out — not to replace a call that should just be a synchronous function. Crossing the boundary async means you've signed up for eventual consistency."
-        >
+        />
+        <DeepDive label="Go deeper">
+          <Card>
           <Bullets
             items={[
               <>RabbitMQ is a broker: exchanges (direct/topic/fanout) route to queues, a consumer ACKs to remove a message, a nack or timeout requeues it, and a dead-letter exchange catches what keeps failing so one poison message doesn't loop forever. The message is gone once ACKed — it's a work queue, not a log. Best for task distribution and routing.</>,
@@ -237,8 +251,8 @@ export default function Layer5() {
               <>Outbox pattern: publishing to the broker and writing to your DB are two systems with no shared transaction — crash between them and the event is lost or sent without the data. Instead write the event to an <InlineCode>outbox</InlineCode> table in the <em>same</em> transaction as the business row; a separate relay polls the table and publishes. One atomic commit, then at-least-once delivery downstream.</>,
             ]}
           />
-        </TopicCard>
-        <Card>
+          </Card>
+          <Card>
           <h4 className="mb-3 font-semibold">RabbitMQ vs Kafka — when each</h4>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-orange-400/30 bg-orange-400/5 p-3">
@@ -257,7 +271,8 @@ export default function Layer5() {
           <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
             The duplicate-processing bug is the one to internalize: at-least-once means "design every consumer to survive seeing the same message twice." It's the exact shape of the dual-write problem in 5.4 — the outbox is to events what cache-aside's delete is to cache entries: make the unsafe step self-healing.
           </p>
-        </Card>
+          </Card>
+        </DeepDive>
         <KafkaDemo />
       </Section>
 
@@ -267,7 +282,9 @@ export default function Layer5() {
           index={5}
           title="Start with a monolith"
           description="Splitting a service turns a local function call — synchronous, transactional, type-checked at compile time — into a network call: it can be slow, fail partially, or arrive twice. Split only at a real bounded-context seam with an independent scaling or deploy need."
-        >
+        />
+        <DeepDive label="Go deeper">
+          <Card>
           <Bullets
             items={[
               <>Split by bounded context (DDD), never by technical layer. A "database service" + "API service" + "logic service" gives you all the network failure of microservices and none of the independent-deploy benefit — every feature still touches all three. A real seam is a domain that owns its data and can deploy and scale alone.</>,
@@ -277,8 +294,8 @@ export default function Layer5() {
               <>The cost you sign up for: partial failure is now normal, every state change is eventually consistent, and a single request fans out across services — so you need a correlation id propagated through every call and structured logs, or a production bug is unobservable.</>,
             ]}
           />
-        </TopicCard>
-        <Card>
+          </Card>
+          <Card>
           <h4 className="mb-3 font-semibold">The failure mode worth memorizing: the distributed monolith</h4>
           <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
             <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Microservices with monolith coupling</div>
@@ -292,7 +309,8 @@ export default function Layer5() {
           <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
             This is why "start with a monolith" isn't conservatism — extracting a service from a clean modular monolith is straightforward; merging mis-drawn services back is a rewrite. CAP and system design at planet scale are L7's job; L5 is the boundary decision: is this a real seam, or a function call you're about to put a network inside?
           </p>
-        </Card>
+          </Card>
+        </DeepDive>
         <CodePlayground
           mode="js"
           height={220}
