@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Server, KeyRound, Inbox, RotateCcw } from 'lucide-react';
-import { Section, TopicCard, Bullets, InlineCode, Card, Stat, DeepDive } from '../components/UI';
+import { Section, TopicCard, Bullets, InlineCode, Card, Stat, DeepDive, Steps } from '../components/UI';
 import { CodePlayground } from '../components/CodePlayground';
 import { MermaidDiagram } from '../components/MermaidDiagram';
 import { Quiz, type QuizQuestion } from '../components/Quiz';
@@ -33,32 +33,35 @@ export default function Layer5() {
             ]}
           />
           </Card>
-          <Card>
-          <h4 className="mb-3 font-semibold">API failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Non-idempotent retry</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Client <InlineCode>POST /payments</InlineCode>, network drops the response, client retries — now there are two charges. <InlineCode>POST</InlineCode> isn't idempotent, so the retry isn't safe.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Fix: an <InlineCode>Idempotency-Key</InlineCode> header the server stores; a repeat key returns the first result instead of acting again. Every money-moving or email-sending <InlineCode>POST</InlineCode> needs one.
-              </p>
-            </div>
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Offset pagination drift</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                User is on page 2 (<InlineCode>OFFSET 20</InlineCode>). A new row is inserted at the top. Page 3 (<InlineCode>OFFSET 40</InlineCode>) now re-shows the row that slid down from page 2.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Cursor pagination anchors to a value, not a count, so inserts above the cursor don't shift the window. This is why every infinite-scroll feed uses keyset.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            HTTP status semantics (which method is safe/idempotent, what 401 vs 403 vs 422 mean on the wire) are L3's domain — API design is about the resource model and contract <em>on top of</em> that transport.
-          </p>
-          </Card>
+          <Steps
+            steps={[
+              { label: 'POST /payments' },
+              { label: 'network drops the response' },
+              { label: 'client retries' },
+              { label: 'two charges', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <InlineCode>POST</InlineCode> isn't idempotent, so the retry isn't safe. Fix: an <InlineCode>Idempotency-Key</InlineCode>{' '}
+                the server stores — a repeat key returns the first result instead of charging again. Every money-moving or
+                email-sending <InlineCode>POST</InlineCode> needs one.
+              </>
+            }
+          />
+          <Steps
+            steps={[
+              { label: 'on page 2 (OFFSET 20)' },
+              { label: 'a row is inserted at the top' },
+              { label: 'page 3 (OFFSET 40)' },
+              { label: 're-shows a row from page 2', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                Offset counts rows; cursor/keyset anchors to a value, so inserts above the cursor don't shift the window — why every
+                infinite-scroll feed uses keyset. (HTTP status semantics — safe/idempotent, 401 vs 403 — are L3's domain.)
+              </>
+            }
+          />
         </DeepDive>
         <RestVsGraphql />
       </Section>
@@ -82,21 +85,22 @@ export default function Layer5() {
             ]}
           />
           </Card>
-          <Card>
-          <h4 className="mb-3 font-semibold">The vulnerability worth memorizing: IDOR</h4>
-          <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-            <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Insecure Direct Object Reference</div>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-              The handler for <InlineCode>GET /orders/123</InlineCode> checks the caller is logged in, loads order 123, returns it. The caller is logged in — as user A. Order 123 belongs to user B. The attacker just increments the id: <InlineCode>/orders/124</InlineCode>, <InlineCode>/orders/125</InlineCode>… and reads the whole table.
-            </p>
-            <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-              "Authenticated" was checked; "authorized for <em>this</em> resource" was not. The fix is one clause — <InlineCode>WHERE id = :id AND user_id = :caller</InlineCode> — or an explicit ownership check before returning. This is consistently the #1 real-world API vulnerability, and a 401-vs-403 mindset hides it: the caller has a valid 200-worthy session, the bug is in the row-level check.
-            </p>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Use UUIDs over sequential ids so resources aren't trivially enumerable — but that's defense in depth, not the fix. The ownership check is the fix; an unguessable id without it just slows the attacker down.
-          </p>
-          </Card>
+          <Steps
+            steps={[
+              { label: 'logged in as user A' },
+              { label: 'GET /orders/123', tone: 'ok' },
+              { label: 'GET /orders/124' },
+              { label: 'order 124 belongs to user B' },
+              { label: 'reads the whole table', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <strong className="text-rose-200">IDOR.</strong> "Authenticated" was checked; "authorized for <em>this</em> row" was
+                not. The fix is one clause — <InlineCode>WHERE id = :id AND user_id = :caller</InlineCode>. Consistently the #1
+                real-world API vulnerability; UUIDs over sequential ids slow enumeration but aren't the fix — the ownership check is.
+              </>
+            }
+          />
         </DeepDive>
         <JwtDecoder />
       </Section>
@@ -121,32 +125,23 @@ export default function Layer5() {
             ]}
           />
           </Card>
-          <Card>
-          <h4 className="mb-3 font-semibold">Two database failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">The N+1 query</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Load 50 orders, then loop and fetch each order's user: 1 + 50 round trips. Each is fast in isolation, so it passes review and looks fine on a 10-row dev DB — then the list page times out in production.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Fix: one <InlineCode>{`JOIN`}</InlineCode>, or batch the ids into a single <InlineCode>{`WHERE user_id IN (...)`}</InlineCode>. The same shape as the GraphQL DataLoader problem in 5.1. Catch it with a test that asserts query count, not just correctness.
-              </p>
-            </div>
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">The simultaneous-deploy migration</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A PR renames a column and updates the code in one shot. During rollout, old pods query the old name and new pods the new name — half your traffic 500s until the deploy finishes.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Migrations are additive and backwards-compatible: add nullable column → write both → backfill in batches (never one giant <InlineCode>UPDATE</InlineCode> — it locks the table and bloats it) → read new → drop old. Each step is safe to run while the previous version is still live.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            Rule of thumb: normalize until it hurts, denormalize until it works. 3NF by default; denormalize deliberately for a <em>measured</em> read-heavy path, and own the consistency cost — a copied value is a value that can go stale.
-          </p>
-          </Card>
+          <NPlusOneLab />
+          <Steps
+            steps={[
+              { label: 'PR renames a column + code' },
+              { label: 'rollout begins' },
+              { label: 'old pods query the old name' },
+              { label: 'new pods query the new name' },
+              { label: 'half of traffic 500s', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                Migrations must be additive and backwards-compatible: add a nullable column → write both → backfill in batches (never
+                one giant <InlineCode>UPDATE</InlineCode>) → read new → drop old. Each step is safe while the previous version is still
+                live. Rule of thumb: normalize until it hurts, denormalize until it works.
+              </>
+            }
+          />
         </DeepDive>
         <IndexDemo />
         <MermaidDiagram
@@ -200,35 +195,36 @@ export default function Layer5() {
             ]}
           />
           </Card>
-          <Card>
-          <h4 className="mb-3 font-semibold">The two failure modes worth memorizing</h4>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-300">Cache stampede (dogpile)</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                A hot key expires. The next <em>N</em> concurrent requests all miss, all run the same expensive query, all write the same value back. One slow query becomes <em>N</em> slow queries — the DB can fall over from a <em>cache</em> event.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Fix: a per-key lock (<InlineCode>SET key _ NX EX 10</InlineCode>) so only the winner recomputes and the rest wait or serve stale. Or refresh-ahead — a background job re-warms the key <em>before</em> the TTL hits, so it never actually expires under load.
-              </p>
-            </div>
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-              <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Dual-write inconsistency</div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-                Cache and DB are two systems with no shared transaction. Write DB then update cache: crash between them = stale cache forever. Update cache then DB: a concurrent reader can write the <em>old</em> DB value over your fresh cache entry.
-              </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-                Why cache-aside <em>deletes</em> instead of updates: a delete is idempotent and self-healing — worst case the next read just re-fetches. This is the same shape as the L5.5 dual-write problem the outbox pattern solves.
-              </p>
-            </div>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-dim">
-            <strong>Negative caching:</strong> cache the <em>absence</em> of a row too (a short-TTL tombstone). Without it, every request for a non-existent id — common in credential-stuffing or scraping — is a guaranteed cache miss that always hits the DB. The cache only protects you on the happy path otherwise.
-          </p>
-          <p className="mt-2 text-[13px] leading-relaxed text-ink-faint">
-            Default to cache-aside + short TTL + jitter. Reach for write-through only when a stale read is unacceptable; reach for write-behind only when the write is cheap to lose. As the standards put it: prefer short TTLs over clever invalidation you'll get wrong.
-          </p>
-          </Card>
+          <Steps
+            steps={[
+              { label: 'a hot key expires' },
+              { label: 'N requests miss at once' },
+              { label: 'N identical expensive queries' },
+              { label: 'the DB falls over', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <strong className="text-amber-200">Cache stampede.</strong> One slow query becomes <em>N</em>. Fix: a per-key lock
+                (<InlineCode>SET key _ NX EX 10</InlineCode>) so only the winner recomputes, or refresh-ahead so the key never actually
+                expires under load. Always TTL + jitter.
+              </>
+            }
+          />
+          <Steps
+            steps={[
+              { label: 'write DB' },
+              { label: 'crash before updating cache' },
+              { label: 'cache stale forever', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <strong className="text-rose-200">Dual-write inconsistency.</strong> Cache and DB have no shared transaction. This is
+                why cache-aside <em>deletes</em> the key instead of updating it — a delete is idempotent and self-healing. Same shape as
+                the L5.5 dual-write problem the outbox pattern solves. Also cache <em>absences</em> (negative caching) or every
+                missing-id lookup hits the DB.
+              </>
+            }
+          />
         </DeepDive>
         <CacheAnimator />
       </Section>
@@ -295,21 +291,23 @@ export default function Layer5() {
             ]}
           />
           </Card>
-          <Card>
-          <h4 className="mb-3 font-semibold">The failure mode worth memorizing: the distributed monolith</h4>
-          <div className="rounded-xl border border-rose-400/30 bg-rose-400/5 p-3">
-            <div className="text-xs font-semibold uppercase tracking-widest text-rose-300">Microservices with monolith coupling</div>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
-              The team split too early, on the wrong seams. Now every feature change touches three services that must deploy together, they share a database so a schema change breaks all of them, and a request hops synchronously through all three so any one being down takes the whole flow down.
-            </p>
-            <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-              You've paid the full distributed-systems tax — network failure, partial failure, eventual consistency, distributed tracing — and kept the coupling of a monolith. It's strictly worse than the monolith you started with: the same lockstep deploys, plus the network in between.
-            </p>
-          </div>
-          <p className="mt-3 text-[13px] leading-relaxed text-ink-faint">
-            This is why "start with a monolith" isn't conservatism — extracting a service from a clean modular monolith is straightforward; merging mis-drawn services back is a rewrite. CAP and system design at planet scale are L7's job; L5 is the boundary decision: is this a real seam, or a function call you're about to put a network inside?
-          </p>
-          </Card>
+          <Steps
+            steps={[
+              { label: 'split too early, wrong seams' },
+              { label: 'one feature touches 3 services' },
+              { label: 'they share a database' },
+              { label: 'must deploy in lockstep' },
+              { label: 'one down → whole flow down', tone: 'fail' },
+            ]}
+            caption={
+              <>
+                <strong className="text-rose-200">The distributed monolith.</strong> Full distributed-systems tax — network failure,
+                partial failure, eventual consistency, tracing — plus the lockstep coupling of a monolith. Strictly worse than the
+                monolith you started with. Why "start with a monolith" isn't conservatism: extracting a service from a clean modular
+                monolith is easy; merging mis-drawn services back is a rewrite. (CAP and planet-scale design are L7.)
+              </>
+            }
+          />
         </DeepDive>
         <CodePlayground
           mode="js"
@@ -795,6 +793,59 @@ function hashStr(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return h;
+}
+
+function NPlusOneLab() {
+  const ORDERS = 50;
+  const [mode, setMode] = useState<'naive' | 'join'>('naive');
+  const queries = mode === 'naive' ? 1 + ORDERS : 1;
+  const ms = mode === 'naive' ? 1 + ORDERS : 3;
+
+  return (
+    <Card>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h4 className="font-semibold">N+1 vs JOIN — load 50 orders with their user</h4>
+        <div className="flex gap-2">
+          {(['naive', 'join'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={cn(
+                'rounded-md border px-2.5 py-1 text-xs',
+                mode === m ? 'border-accent bg-accent/20 text-accent' : 'border-white/10 bg-white/5 text-ink-dim',
+              )}
+            >
+              {m === 'naive' ? 'N+1 (loop)' : 'JOIN (batched)'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1 rounded-xl border border-white/5 bg-bg-soft/40 p-3">
+        {Array.from({ length: queries }).map((_, i) => (
+          <motion.span
+            key={`${mode}-${i}`}
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: Math.min(i * 0.014, 0.7), duration: 0.15 }}
+            className={cn(
+              'h-3.5 w-3.5 rounded-sm',
+              i === 0 ? 'bg-accent' : mode === 'naive' ? 'bg-rose-400/70' : 'bg-emerald-400/70',
+            )}
+          />
+        ))}
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <Stat label="DB queries" value={queries} sub={mode === 'naive' ? '1 + 50 round trips' : 'one batched query'} />
+        <Stat label="~Latency" value={`${ms} ms`} sub={mode === 'naive' ? 'per-row round trips' : 'single round trip'} />
+        <Stat label="Speedup" value={`${Math.round((1 + ORDERS) / 3)}×`} sub="JOIN vs N+1" />
+      </div>
+      <p className="mt-3 text-[13px] leading-relaxed text-ink-dim">
+        Each square is one round trip to the database. The N+1 loop fires a query per order; a <InlineCode>JOIN</InlineCode> — or a
+        batched <InlineCode>{`WHERE id IN (...)`}</InlineCode> — collapses it to one. Fast on a 10-row dev DB, times out in prod.
+        Catch it with a test that asserts query count, not just correctness.
+      </p>
+    </Card>
+  );
 }
 
 const QUESTIONS: QuizQuestion[] = [

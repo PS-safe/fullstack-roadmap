@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ChevronDown } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { useProgress } from '../lib/progress';
 
@@ -192,6 +192,52 @@ export function DeepDive({
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/**
+ * Animated step sequence — a visual narrative of how something works or fails.
+ * Steps fade in left-to-right on scroll; mark the breaking step `fail`, the
+ * good outcome `ok`. Replaces a wall of prose with a glanceable flow.
+ */
+export function Steps({
+  steps,
+  caption,
+}: {
+  steps: { label: string; tone?: 'ok' | 'fail' | 'default' }[];
+  caption?: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-white/5 bg-bg-soft/40 p-4">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+        {steps.map((s, i) => (
+          <Fragment key={i}>
+            {i > 0 && (
+              <span aria-hidden className="text-ink-faint">
+                →
+              </span>
+            )}
+            <motion.span
+              initial={{ opacity: 0, y: 6 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-40px' }}
+              transition={{ delay: i * 0.12, duration: 0.3 }}
+              className={cn(
+                'rounded-lg border px-2.5 py-1.5 text-xs font-medium',
+                s.tone === 'fail'
+                  ? 'border-rose-400/40 bg-rose-400/10 text-rose-200'
+                  : s.tone === 'ok'
+                    ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-200'
+                    : 'border-white/10 bg-white/5 text-ink-dim',
+              )}
+            >
+              {s.label}
+            </motion.span>
+          </Fragment>
+        ))}
+      </div>
+      {caption && <p className="mt-3 text-[13px] leading-relaxed text-ink-dim">{caption}</p>}
     </div>
   );
 }
